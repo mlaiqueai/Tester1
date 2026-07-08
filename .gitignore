@@ -1,0 +1,10 @@
+# Never commit secrets or generated audio
+*.wav
+*.mp3
+script.txt
+key.txt
+rclone.conf
+*.json
+!package.json
+.env
+__pycache__/

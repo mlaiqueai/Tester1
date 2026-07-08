@@ -1,0 +1,64 @@
+name: Daily Audio Overviews
+
+# Runs on GitHub's servers — your computer can be OFF.
+on:
+  schedule:
+    # 10:12 UTC daily. GitHub cron is UTC-only — adjust to your timezone:
+    #   6:12am US-Eastern = 10:12 UTC (EDT) / 11:12 UTC (EST)
+    #   6:12am US-Central = 11:12 UTC (CDT) / 12:12 UTC (CST)
+    - cron: "12 10 * * *"
+  workflow_dispatch: {}   # lets you trigger a manual test run from the Actions tab
+
+jobs:
+  audio:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false          # one show failing must not kill the others
+      matrix:
+        show: [dx-daily, dx-deal-sourcer, dx-public-equities]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Set run date
+        run: echo "RUN_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
+
+      - name: Research + write podcast script
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL: claude-sonnet-5
+        run: python scripts/run_show.py "${{ matrix.show }}" "script.txt"
+
+      - name: Generate audio
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/generate_audio.py "script.txt" "${{ matrix.show }}-${RUN_DATE}.wav"
+
+      - name: Install rclone
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      - name: Write rclone config
+        run: |
+          mkdir -p ~/.config/rclone
+          printf '%s' "${{ secrets.RCLONE_CONF }}" > ~/.config/rclone/rclone.conf
+
+      - name: Upload to Google Drive (Daily Audio)
+        run: |
+          rclone copyto "${{ matrix.show }}-${RUN_DATE}.wav" \
+            "gdrive:Daily Audio/${{ matrix.show }}-${RUN_DATE}.wav" \
+            --drive-chunk-size 32M -v
+
+      - name: Save a copy as a build artifact (fallback)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.show }}-${{ env.RUN_DATE }}
+          path: ${{ matrix.show }}-*.wav
+          if-no-files-found: ignore
