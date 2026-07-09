@@ -35,10 +35,17 @@ jobs:
           CLAUDE_MODEL: claude-sonnet-5
         run: python scripts/run_show.py "${{ matrix.show }}" "script.txt"
 
-      - name: Generate audio
+      - name: Generate audio (WAV)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python scripts/generate_audio.py "script.txt" "${{ matrix.show }}-${RUN_DATE}.wav"
+
+      - name: Convert to MP3
+        run: |
+          FFMPEG=$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
+          "$FFMPEG" -y -loglevel error \
+            -i "${{ matrix.show }}-${RUN_DATE}.wav" -b:a 128k \
+            "${{ matrix.show }}-${RUN_DATE}.mp3"
 
       - name: Install rclone
         run: |
@@ -49,16 +56,15 @@ jobs:
           mkdir -p ~/.config/rclone
           printf '%s' "${{ secrets.RCLONE_CONF }}" > ~/.config/rclone/rclone.conf
 
-      - name: Upload to Google Drive (Daily Audio)
+      - name: Upload MP3 to Google Drive (Daily Audio)
         run: |
-          rclone copyto "${{ matrix.show }}-${RUN_DATE}.wav" \
-            "gdrive:Daily Audio/${{ matrix.show }}-${RUN_DATE}.wav" \
-            --drive-chunk-size 32M -v
+          rclone copyto "${{ matrix.show }}-${RUN_DATE}.mp3" \
+            "gdrive:Daily Audio/${{ matrix.show }}-${RUN_DATE}.mp3" -v
 
       - name: Save a copy as a build artifact (fallback)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.show }}-${{ env.RUN_DATE }}
-          path: ${{ matrix.show }}-*.wav
+          path: ${{ matrix.show }}-*.mp3
           if-no-files-found: ignore

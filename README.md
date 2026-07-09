@@ -11,8 +11,9 @@ Shows: `dx-daily` (full 4-pillar brief), `dx-deal-sourcer`, `dx-public-equities`
 For each show, once a day, a GitHub Actions job:
 1. **Researches + writes a script** — calls Claude (with live web search) using
    `prompts/<show>.md` → a two-host (Alex + Sam) podcast script.
-2. **Generates audio** — Google's official Gemini multi-speaker TTS → a `.wav`.
-3. **Uploads to Drive** — `rclone` copies it to `Daily Audio/<show>-<date>.wav`.
+2. **Generates audio** — Google's official Gemini multi-speaker TTS → a `.wav`,
+   then converts to a compact `.mp3` (bundled ffmpeg, ~6 MB).
+3. **Uploads to Drive** — `rclone` copies it to `Daily Audio/<show>-<date>.mp3`.
 
 > **Note on "the skills":** GitHub's runners can't reach your Claude Cowork
 > plugin skills or Google connectors. So each show is a *self-contained research
@@ -94,10 +95,10 @@ GitHub cron is **UTC**. The default `12 10 * * *` ≈ 6:12am US-Eastern. Edit th
 | Anthropic API (3 shows/day) | ~$1–2/day |
 | Gemini TTS | a few cents/day |
 | GitHub Actions | free (well under the 2,000 free min/month) |
-| Google Drive | free (your 15 GB; ~17 MB/episode) |
+| Google Drive | free (your 15 GB; ~6 MB/episode as MP3) |
 
 ## Customize
 - **Voices:** set `GEMINI_VOICE_A` / `GEMINI_VOICE_B` env in the workflow.
 - **Cheaper/pricier research:** change `CLAUDE_MODEL` (default `claude-sonnet-5`).
 - **Add a show:** drop a `prompts/<name>.md` and add `<name>` to the matrix.
-- **MP3 instead of WAV:** add an ffmpeg step before upload.
+- **Keep WAV too:** upload the `.wav` in an extra rclone step (already generated).
