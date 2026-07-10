@@ -1,0 +1,21 @@
+{
+  "owner": "Mlaique",
+  "hosts": { "a": "Alex", "b": "Sam" },
+  "briefs": [
+    {
+      "id": "public-equity",
+      "title": "Daily Public Equity",
+      "prompt": "Produce a concise daily public-equity market briefing: overnight and pre-market moves in the major indices (S&P 500, Nasdaq, Dow), a few notable single-name movers with the 'why', the key macro/economic headlines of the day, and a short 'what to watch' list. Keep it sharp, practical, and non-hype."
+    },
+    {
+      "id": "dx-intel",
+      "title": "Daily DX Intel",
+      "prompt": "Produce a daily developer-experience (DX) intelligence briefing: notable dev-tooling, platform, and framework releases or changes; emerging DX trends; anything affecting CI/CD, editors, AI coding tools, or productivity; and one concrete, actionable insight for a builder to try today."
+    },
+    {
+      "id": "overview",
+      "title": "Daily Overview",
+      "prompt": "Produce a short, upbeat daily overview that ties the day together: the big theme, the top three priorities to focus on, one thing to be mindful of, and a motivating sign-off. Keep it brief."
+    }
+  ]
+}

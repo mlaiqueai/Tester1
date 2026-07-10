@@ -1,7 +1,8 @@
-name: Daily NotebookLM-style Audio Briefing
+name: Daily NotebookLM-style Audio Briefings
 
-# Runs every morning and produces a two-host audio overview of your scheduled
-# tasks. Trigger it by hand anytime from the Actions tab (Run workflow).
+# Runs every morning and produces three two-host audio briefings
+# (Public Equity, DX Intel, Overview). Trigger it by hand anytime from the
+# Actions tab (Run workflow).
 on:
   schedule:
     - cron: "0 12 * * *"   # 12:00 UTC daily — adjust to your timezone
@@ -25,16 +26,16 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Generate briefing
+      - name: Generate briefings
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TTS_VOICE_A: Kore
           TTS_VOICE_B: Puck
         run: python scripts/generate_briefing.py
 
-      - name: Upload briefing (audio + text)
+      - name: Upload briefings (audio + text)
         uses: actions/upload-artifact@v4
         with:
-          name: daily-briefing
+          name: daily-briefings
           path: out/
           if-no-files-found: error

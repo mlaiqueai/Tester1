@@ -1,5 +1,5 @@
 # Generated briefing output
 out/
 
-# Your real task list (keep private; tasks.example.json is the template)
-tasks.json
+# Your real brief config (keep private; briefs.example.json is the template)
+briefs.json
