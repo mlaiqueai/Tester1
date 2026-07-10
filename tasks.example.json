@@ -1,0 +1,26 @@
+{
+  "owner": "Mlaique",
+  "timezone": "UTC",
+  "tasks": [
+    {
+      "time": "8:00 AM",
+      "title": "Morning standup",
+      "detail": "Quick sync with the team on today's priorities."
+    },
+    {
+      "time": "10:30 AM",
+      "title": "Review pull requests",
+      "detail": "Go through open PRs and leave feedback before lunch."
+    },
+    {
+      "time": "2:00 PM",
+      "title": "Design review",
+      "detail": "Walk through the new dashboard mockups with the design team."
+    },
+    {
+      "time": "5:00 PM",
+      "title": "Plan tomorrow",
+      "detail": "Block out focus time and confirm meeting schedule."
+    }
+  ]
+}
