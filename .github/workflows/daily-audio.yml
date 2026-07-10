@@ -27,9 +27,9 @@ jobs:
 
       - name: Generate briefing
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TTS_VOICE_A: alloy
-          TTS_VOICE_B: shimmer
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TTS_VOICE_A: Kore
+          TTS_VOICE_B: Puck
         run: python scripts/generate_briefing.py
 
       - name: Upload briefing (audio + text)
