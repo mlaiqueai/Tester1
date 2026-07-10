@@ -3,10 +3,11 @@ name: Daily Audio Overviews
 # Runs on GitHub's servers — your computer can be OFF.
 on:
   schedule:
-    # 10:12 UTC daily. GitHub cron is UTC-only — adjust to your timezone:
-    #   6:12am US-Eastern = 10:12 UTC (EDT) / 11:12 UTC (EST)
-    #   6:12am US-Central = 11:12 UTC (CDT) / 12:12 UTC (CST)
-    - cron: "12 10 * * *"
+    # 11:03 UTC = 6:03 AM US-Central during CDT (summer). GitHub cron is UTC-only,
+    # has no timezone/DST support, and may lag 5-15 min under load.
+    # ⚠️ DST: when Central switches to CST (standard time, early Nov), 11:03 UTC
+    #    becomes 5:03 AM local — change this to "3 12 * * *" then to keep it at 6 AM.
+    - cron: "3 11 * * *"
   workflow_dispatch: {}   # lets you trigger a manual test run from the Actions tab
 
 jobs:
@@ -32,7 +33,7 @@ jobs:
       - name: Research + write podcast script
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          CLAUDE_MODEL: claude-sonnet-5
+          CLAUDE_MODEL: claude-opus-4-8
         run: python scripts/run_show.py "${{ matrix.show }}" "script.txt"
 
       - name: Generate audio (WAV)
