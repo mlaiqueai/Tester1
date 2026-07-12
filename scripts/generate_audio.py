@@ -1,96 +1,94 @@
 #!/usr/bin/env python3
-"""Turn a two-host script into podcast audio via Google's official Gemini
-multi-speaker TTS API. Standard library only.
+"""Turn a two-host Alex/Sam script into podcast audio using edge-tts
+(Microsoft Edge's neural voices — free, no API key, runs on a plain runner).
 
-Usage:  python generate_audio.py <script_path> <output_wav_path>
-Env:    GEMINI_API_KEY (required), GEMINI_TTS_MODEL / GEMINI_VOICE_A / GEMINI_VOICE_B (optional)
+edge-tts has no single-call multi-speaker mode, so we split the script into
+per-speaker turns, synthesize each with that speaker's voice, and concatenate
+the segments into one MP3 with ffmpeg (bundled via imageio-ffmpeg).
+
+Usage:  python generate_audio.py <script_path> <output_audio_path>
+Env:    EDGE_VOICE_A / EDGE_VOICE_B (voices for Alex / Sam), EDGE_RATE (optional, e.g. "+8%")
 """
-import base64
-import json
+import asyncio
 import os
+import re
+import subprocess
 import sys
-import urllib.error
-import urllib.request
-import wave
+import tempfile
 
-MODEL = os.environ.get("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
 SPEAKER_A, SPEAKER_B = "Alex", "Sam"
-VOICE_A = os.environ.get("GEMINI_VOICE_A", "Kore")
-VOICE_B = os.environ.get("GEMINI_VOICE_B", "Puck")
+VOICE_A = os.environ.get("EDGE_VOICE_A", "en-US-AvaNeural")      # Alex — curious host
+VOICE_B = os.environ.get("EDGE_VOICE_B", "en-US-AndrewNeural")   # Sam — expert analyst
+RATE = os.environ.get("EDGE_RATE", "+0%")
+
+LINE = re.compile(r"^(Alex|Sam)\s*:\s*(.+)$")
 
 
-def build_payload(dialogue):
-    prompt = ("TTS the following two-host podcast conversation. Read it naturally "
-              "and conversationally, like an NPR-style deep-dive podcast:\n\n" + dialogue)
-    return {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "responseModalities": ["AUDIO"],
-            "speechConfig": {"multiSpeakerVoiceConfig": {"speakerVoiceConfigs": [
-                {"speaker": SPEAKER_A, "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": VOICE_A}}},
-                {"speaker": SPEAKER_B, "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": VOICE_B}}},
-            ]}},
-        },
-    }
+def parse_lines(dialogue):
+    segments = []
+    for ln in dialogue.splitlines():
+        m = LINE.match(ln.strip())
+        if m:
+            segments.append((m.group(1), m.group(2).strip()))
+    return segments
 
 
-def call_api(key, payload):
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{MODEL}:generateContent?key={key}")
-    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
-                                 headers={"Content-Type": "application/json"})
+async def synth_segment(text, voice, path):
+    import edge_tts
+    await edge_tts.Communicate(text, voice, rate=RATE).save(path)
+
+
+def ffmpeg_exe():
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def concat_to(out_path, segment_paths):
+    """Concatenate MP3 segments into out_path, re-encoding for a clean join."""
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
+        for p in segment_paths:
+            # ffmpeg concat list format; escape single quotes in the path
+            f.write("file '%s'\n" % os.path.abspath(p).replace("'", "'\\''"))
+        list_path = f.name
     try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        sys.exit(f"ERROR: Gemini API HTTP {e.code}: {e.read().decode('utf-8','replace')[:1000]}")
-    except urllib.error.URLError as e:
-        sys.exit(f"ERROR: network error calling Gemini API: {e}")
-
-
-def extract_audio(resp):
-    try:
-        parts = resp["candidates"][0]["content"]["parts"]
-    except (KeyError, IndexError, TypeError):
-        sys.exit(f"ERROR: unexpected API response: {json.dumps(resp)[:1000]}")
-    for p in parts:
-        inline = p.get("inlineData") or p.get("inline_data")
-        if inline and inline.get("data"):
-            mime = inline.get("mimeType") or inline.get("mime_type") or ""
-            return base64.b64decode(inline["data"]), mime
-    sys.exit(f"ERROR: no audio in response: {json.dumps(resp)[:1000]}")
-
-
-def rate_from(mime):
-    for part in mime.split(";"):
-        part = part.strip()
-        if part.startswith("rate="):
-            try:
-                return int(part.split("=", 1)[1])
-            except ValueError:
-                pass
-    return 24000
+        subprocess.run(
+            [ffmpeg_exe(), "-y", "-loglevel", "error", "-f", "concat",
+             "-safe", "0", "-i", list_path, "-b:a", "128k", out_path],
+            check=True,
+        )
+    finally:
+        os.unlink(list_path)
 
 
 def main(script_path, out_path):
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not key:
-        sys.exit("ERROR: GEMINI_API_KEY not set.")
     with open(script_path, encoding="utf-8") as f:
         dialogue = f.read().strip()
     if not dialogue:
         sys.exit(f"ERROR: {script_path} is empty.")
-    print(f"Calling Gemini TTS ({MODEL}), {len(dialogue)} chars...")
-    pcm, mime = extract_audio(call_api(key, build_payload(dialogue)))
-    rate = rate_from(mime)
-    with wave.open(out_path, "wb") as w:
-        w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
-        w.writeframes(pcm)
+
+    segments = parse_lines(dialogue)
+    if not segments:
+        sys.exit(f"ERROR: no Alex/Sam dialogue found in {script_path}.")
+
+    print(f"edge-tts: synthesizing {len(segments)} turns "
+          f"(Alex={VOICE_A}, Sam={VOICE_B}) -> {out_path}")
+
+    tmpdir = tempfile.mkdtemp(prefix="edgetts-")
+    seg_paths = []
+    for i, (who, text) in enumerate(segments):
+        voice = VOICE_A if who == SPEAKER_A else VOICE_B
+        seg = os.path.join(tmpdir, f"{i:03d}.mp3")
+        asyncio.run(synth_segment(text, voice, seg))
+        if not os.path.exists(seg) or os.path.getsize(seg) == 0:
+            sys.exit(f"ERROR: edge-tts produced no audio for turn {i} ({who}).")
+        seg_paths.append(seg)
+
+    concat_to(out_path, seg_paths)
     print(f"OK  {out_path}  ({os.path.getsize(out_path)/1024:.0f} KB, "
-          f"~{len(pcm)/(2*rate):.0f}s, {rate} Hz)")
+          f"{len(segments)} turns)")
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        sys.exit("Usage: python generate_audio.py <script_path> <output_wav_path>")
+        sys.exit("Usage: python generate_audio.py <script_path> <output_audio_path>")
     main(sys.argv[1], sys.argv[2])

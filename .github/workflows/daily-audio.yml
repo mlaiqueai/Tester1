@@ -36,17 +36,8 @@ jobs:
           CLAUDE_MODEL: claude-opus-4-8
         run: python scripts/run_show.py "${{ matrix.show }}" "script.txt"
 
-      - name: Generate audio (WAV)
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python scripts/generate_audio.py "script.txt" "${{ matrix.show }}-${RUN_DATE}.wav"
-
-      - name: Convert to MP3
-        run: |
-          FFMPEG=$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
-          "$FFMPEG" -y -loglevel error \
-            -i "${{ matrix.show }}-${RUN_DATE}.wav" -b:a 128k \
-            "${{ matrix.show }}-${RUN_DATE}.mp3"
+      - name: Generate audio (MP3, edge-tts — free, no API key)
+        run: python scripts/generate_audio.py "script.txt" "${{ matrix.show }}-${RUN_DATE}.mp3"
 
       - name: Install rclone
         run: |
