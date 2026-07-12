@@ -11,8 +11,9 @@ Shows: `dx-daily` (full 4-pillar brief), `dx-deal-sourcer`, `dx-public-equities`
 For each show, once a day, a GitHub Actions job:
 1. **Researches + writes a script** — calls Claude (with live web search) using
    `prompts/<show>.md` → a two-host (Alex + Sam) podcast script.
-2. **Generates audio** — Google's official Gemini multi-speaker TTS → a `.wav`,
-   then converts to a compact `.mp3` (bundled ffmpeg, ~6 MB).
+2. **Generates audio** — `edge-tts` (Microsoft Edge's neural voices, **free, no
+   API key**) synthesizes each Alex/Sam turn with its own voice, then ffmpeg
+   (bundled) concatenates them into one compact `.mp3`.
 3. **Uploads to Drive** — `rclone` copies it to `Daily Audio/<show>-<date>.mp3`.
 
 > **Note on "the skills":** GitHub's runners can't reach your Claude Cowork
@@ -22,10 +23,11 @@ For each show, once a day, a GitHub Actions job:
 
 ---
 
-## Setup — three secrets
+## Setup — two secrets
 
-You'll add three secrets to the repo (**Settings → Secrets and variables →
-Actions → New repository secret**). Here's each one and exactly how to get it.
+Audio now uses **`edge-tts`**, which needs **no API key** — so there are only
+two secrets to add (**Settings → Secrets and variables → Actions → New
+repository secret**).
 
 ### 1. `ANTHROPIC_API_KEY` — lets headless Claude do the research
 - Go to <https://console.anthropic.com> → **Settings → API Keys → Create Key**.
@@ -34,12 +36,11 @@ Actions → New repository secret**). Here's each one and exactly how to get it.
   subscription**. Rough cost ≈ **$0.30–0.60 per show** (web searches + tokens),
   so **~$1–2/day** for all three. Set a monthly cap under **Billing → Limits**.
 
-### 2. `GEMINI_API_KEY` — the podcast audio (you already have this)
-- The key already in your local `key.txt` works. Or make a fresh one at
-  <https://aistudio.google.com/apikey>.
-- Cost is tiny — a few cents per episode.
+> **Audio has no key and no bill.** `edge-tts` uses Microsoft Edge's free
+> read-aloud voices. (This replaced Gemini TTS, which required prepaid billing
+> credits.) No `GEMINI_API_KEY` needed.
 
-### 3. `RCLONE_CONF` — uploads audio to your Drive
+### 2. `RCLONE_CONF` — uploads audio to your Drive
 **Important correction:** I originally suggested a *service account*, but your
 Drive is a consumer Gmail account, and service accounts **can't own files there**
 (no storage quota) — uploads would fail. The reliable path is **rclone with an
@@ -72,14 +73,14 @@ That token lets the workflow upload as you, with no browser and no PC on.
    git remote add origin https://github.com/<you>/daily-dx-audio.git
    git push -u origin main
    ```
-3. Add the three secrets above.
+3. Add the two secrets above.
 4. **Actions tab → enable workflows** if prompted.
 
 ## Test it before trusting the schedule
 - **Actions tab → "Daily Audio Overviews" → Run workflow** (the
   `workflow_dispatch` button) → runs all three shows now.
 - Watch the logs. On success, check the `Daily Audio` folder in Drive.
-- Every run also saves the `.wav` as a **downloadable Actions artifact** as a
+- Every run also saves the `.mp3` as a **downloadable Actions artifact** as a
   fallback, even if the Drive upload step fails.
 
 ## Schedule / timezone
@@ -93,12 +94,14 @@ GitHub cron is **UTC**. The default `12 10 * * *` ≈ 6:12am US-Eastern. Edit th
 | Item | Rough cost |
 |---|---|
 | Anthropic API (3 shows/day) | ~$1–2/day |
-| Gemini TTS | a few cents/day |
+| edge-tts (audio) | **free** (no key, no bill) |
 | GitHub Actions | free (well under the 2,000 free min/month) |
 | Google Drive | free (your 15 GB; ~6 MB/episode as MP3) |
 
 ## Customize
-- **Voices:** set `GEMINI_VOICE_A` / `GEMINI_VOICE_B` env in the workflow.
+- **Voices:** set `EDGE_VOICE_A` / `EDGE_VOICE_B` env in the workflow (Alex / Sam).
+  List all voices with `edge-tts --list-voices`. Defaults: `en-US-AvaNeural` /
+  `en-US-AndrewNeural`.
+- **Pace:** set `EDGE_RATE` (e.g. `+8%`) to speed up or slow down delivery.
 - **Cheaper/pricier research:** change `CLAUDE_MODEL` (default `claude-sonnet-5`).
 - **Add a show:** drop a `prompts/<name>.md` and add `<name>` to the matrix.
-- **Keep WAV too:** upload the `.wav` in an extra rclone step (already generated).
