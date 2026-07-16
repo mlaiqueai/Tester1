@@ -9,8 +9,9 @@ Shows: `dx-daily` (full 4-pillar brief), `dx-deal-sourcer`, `dx-public-equities`
 ## How it works
 
 For each show, once a day, a GitHub Actions job:
-1. **Researches + writes a script** — calls Claude (with live web search) using
-   `prompts/<show>.md` → a two-host (Alex + Sam) podcast script.
+1. **Researches + writes a script** — calls **Gemini's free tier**
+   (`gemini-2.5-flash`) with **Google Search grounding** using `prompts/<show>.md`
+   → a two-host (Alex + Sam) podcast script. No per-call bill.
 2. **Generates audio** — `edge-tts` (Microsoft Edge's neural voices, **free, no
    API key**) synthesizes each Alex/Sam turn with its own voice, then ffmpeg
    (bundled) concatenates them into one compact `.mp3`.
@@ -18,27 +19,29 @@ For each show, once a day, a GitHub Actions job:
 
 > **Note on "the skills":** GitHub's runners can't reach your Claude Cowork
 > plugin skills or Google connectors. So each show is a *self-contained research
-> prompt distilled from the skill* (in `prompts/`), run against Claude's web
-> search. The intelligence is faithful; the plumbing is standalone.
+> prompt distilled from the skill* (in `prompts/`), run against Gemini's Google
+> Search grounding. The intelligence is faithful; the plumbing is standalone.
 
 ---
 
 ## Setup — two secrets
 
-Audio now uses **`edge-tts`**, which needs **no API key** — so there are only
-two secrets to add (**Settings → Secrets and variables → Actions → New
-repository secret**).
+Both the research and the audio now run for **free**, so there are only two
+secrets to add (**Settings → Secrets and variables → Actions → New repository
+secret**).
 
-### 1. `ANTHROPIC_API_KEY` — lets headless Claude do the research
-- Go to <https://console.anthropic.com> → **Settings → API Keys → Create Key**.
-- Copy it into a secret named `ANTHROPIC_API_KEY`.
-- **Billing:** this is pay-as-you-go API usage, **separate from your Claude
-  subscription**. Rough cost ≈ **$0.30–0.60 per show** (web searches + tokens),
-  so **~$1–2/day** for all three. Set a monthly cap under **Billing → Limits**.
+### 1. `GEMINI_API_KEY` — free-tier research + scriptwriting
+- Create a key at <https://aistudio.google.com/apikey>.
+- Copy it into a secret named `GEMINI_API_KEY`.
+- **Billing:** the `gemini-2.5-flash` text model and Google Search grounding are
+  used on the **free tier** — no per-call bill. Free tier has daily request caps,
+  which comfortably cover three shows a day. (Note: this is Gemini *text*, which
+  is free — unlike Gemini *TTS*, which needs prepaid credits. Audio doesn't use
+  Gemini at all; it uses `edge-tts`.)
 
-> **Audio has no key and no bill.** `edge-tts` uses Microsoft Edge's free
-> read-aloud voices. (This replaced Gemini TTS, which required prepaid billing
-> credits.) No `GEMINI_API_KEY` needed.
+> **Audio has no key and no bill either.** `edge-tts` uses Microsoft Edge's free
+> read-aloud voices, so the `GEMINI_API_KEY` above is only for the research step.
+> There is no longer any `ANTHROPIC_API_KEY` — the pipeline is fully free.
 
 ### 2. `RCLONE_CONF` — uploads audio to your Drive
 **Important correction:** I originally suggested a *service account*, but your
@@ -93,7 +96,7 @@ GitHub cron is **UTC**. The default `12 10 * * *` ≈ 6:12am US-Eastern. Edit th
 ## Cost summary
 | Item | Rough cost |
 |---|---|
-| Anthropic API (3 shows/day) | ~$1–2/day |
+| Gemini research (3 shows/day) | **free** (free-tier `gemini-2.5-flash` + grounding) |
 | edge-tts (audio) | **free** (no key, no bill) |
 | GitHub Actions | free (well under the 2,000 free min/month) |
 | Google Drive | free (your 15 GB; ~6 MB/episode as MP3) |
@@ -103,5 +106,5 @@ GitHub cron is **UTC**. The default `12 10 * * *` ≈ 6:12am US-Eastern. Edit th
   List all voices with `edge-tts --list-voices`. Defaults: `en-US-AvaNeural` /
   `en-US-AndrewNeural`.
 - **Pace:** set `EDGE_RATE` (e.g. `+8%`) to speed up or slow down delivery.
-- **Cheaper/pricier research:** change `CLAUDE_MODEL` (default `claude-sonnet-5`).
+- **Research model:** change `TEXT_MODEL` (default `gemini-2.5-flash`).
 - **Add a show:** drop a `prompts/<name>.md` and add `<name>` to the matrix.
