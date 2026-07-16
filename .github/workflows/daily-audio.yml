@@ -30,10 +30,9 @@ jobs:
       - name: Set run date
         run: echo "RUN_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
 
-      - name: Research + write podcast script
+      - name: Research + write podcast script (Gemini free tier)
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          CLAUDE_MODEL: claude-opus-4-8
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python scripts/run_show.py "${{ matrix.show }}" "script.txt"
 
       - name: Generate audio (MP3, edge-tts — free, no API key)

@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
-"""Run one "show": call Claude (with live web search) to research the topic and
-write a two-host podcast script, saved to the given output path.
+"""Run one "show": call Gemini (free tier, with Google Search grounding) to
+research the topic and write a two-host podcast script, saved to the given path.
 
-Runs in GitHub Actions (or anywhere) with only the `anthropic` package.
-The research prompt for each show lives in prompts/<show>.md.
+Uses the Gemini API's free tier — no per-call bill — with the `gemini-2.5-flash`
+text model and built-in Google Search grounding for fresh daily research.
+Standard library only (urllib); the research prompt for each show lives in
+prompts/<show>.md.
 
 Usage:  python run_show.py <show_id> <output_script_path>
-Env:    ANTHROPIC_API_KEY (required), RUN_DATE (YYYY-MM-DD, optional),
-        CLAUDE_MODEL (optional, default claude-sonnet-5)
+Env:    GEMINI_API_KEY (required), RUN_DATE (YYYY-MM-DD, optional),
+        TEXT_MODEL (optional, default gemini-2.5-flash)
 """
+import json
 import os
 import re
 import sys
+import time
+import urllib.error
+import urllib.request
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
-MAX_SEARCHES = int(os.environ.get("MAX_SEARCHES", "12"))
+MODEL = os.environ.get("TEXT_MODEL", "gemini-2.5-flash")
+API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
 
 
 def load_prompt(show_id, run_date):
@@ -27,31 +33,71 @@ def load_prompt(show_id, run_date):
     return body.replace("{{RUN_DATE}}", run_date)
 
 
+def call_gemini(prompt, key):
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        # Google Search grounding keeps the research fresh (free-tier daily cap).
+        "tools": [{"google_search": {}}],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 8192,
+            # Spend the whole output budget on the script, not hidden reasoning.
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
+    }
+    url = API_URL.format(model=MODEL, key=key)
+    body = json.dumps(payload).encode("utf-8")
+
+    # Free tier can return 429 (rate/daily cap) or transient 5xx — back off a bit.
+    last_err = ""
+    for attempt in range(4):
+        req = urllib.request.Request(
+            url, data=body, headers={"Content-Type": "application/json"}, method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:600]
+            last_err = f"HTTP {e.code}: {detail}"
+            if e.code in (429, 500, 503) and attempt < 3:
+                wait = 2 ** (attempt + 1)
+                print(f"  Gemini {last_err} — retrying in {wait}s", file=sys.stderr)
+                time.sleep(wait)
+                continue
+            sys.exit(f"ERROR: Gemini API {last_err}")
+        except urllib.error.URLError as e:
+            last_err = str(e)
+            if attempt < 3:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            sys.exit(f"ERROR: network error calling Gemini API: {last_err}")
+    sys.exit(f"ERROR: Gemini API failed after retries: {last_err}")
+
+
+def extract_text(resp):
+    candidates = resp.get("candidates") or []
+    if not candidates:
+        feedback = resp.get("promptFeedback")
+        sys.exit(f"ERROR: no candidates from Gemini (blocked?): {json.dumps(feedback)[:600]}")
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts)
+    if not text.strip():
+        reason = candidates[0].get("finishReason", "unknown")
+        sys.exit(f"ERROR: empty text from Gemini (finishReason={reason})")
+    return text
+
+
 def run(show_id, out_path):
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not key:
+        sys.exit("ERROR: GEMINI_API_KEY not set.")
     run_date = os.environ.get("RUN_DATE", "").strip() or "today"
     prompt = load_prompt(show_id, run_date)
-    import anthropic  # imported lazily so the module is testable without the dep
-    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+    print(f"Researching + writing {show_id} with {MODEL} (Google Search grounding)...")
 
-    messages = [{"role": "user", "content": prompt}]
-    tools = [{"type": "web_search_20250305", "name": "web_search", "max_uses": MAX_SEARCHES}]
-
-    # Server-side web search runs inside the API. A long research turn can come
-    # back as stop_reason="pause_turn"; resend the accumulated turn to continue.
-    final_text = ""
-    for _ in range(6):
-        resp = client.messages.create(
-            model=MODEL, max_tokens=8000, messages=messages, tools=tools,
-        )
-        final_text = "".join(
-            b.text for b in resp.content if getattr(b, "type", None) == "text"
-        )
-        if resp.stop_reason == "pause_turn":
-            messages.append({"role": "assistant", "content": resp.content})
-            continue
-        break
-
-    script = extract_script(final_text)
+    text = extract_text(call_gemini(prompt, key))
+    script = extract_script(text)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(script)
     print(f"OK  {show_id}: wrote {len(script)} chars of dialogue -> {out_path}")
