@@ -54,10 +54,16 @@ jobs:
           rclone copyto "${{ matrix.show }}-${RUN_DATE}.mp3" \
             "gdrive:Daily Audio/${{ matrix.show }}-${RUN_DATE}.mp3" -v
 
-      - name: Save a copy as a build artifact (fallback)
+      - name: Label the transcript
+        if: always()
+        run: cp script.txt "${{ matrix.show }}-${RUN_DATE}.txt" || true
+
+      - name: Save a copy as a build artifact (audio + transcript)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.show }}-${{ env.RUN_DATE }}
-          path: ${{ matrix.show }}-*.mp3
+          path: |
+            ${{ matrix.show }}-*.mp3
+            ${{ matrix.show }}-*.txt
           if-no-files-found: ignore
