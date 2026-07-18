@@ -9,37 +9,45 @@ Shows: `dx-daily` (full 4-pillar brief), `dx-deal-sourcer`, `dx-public-equities`
 ## How it works
 
 For each show, once a day, a GitHub Actions job:
-1. **Builds a script from live free feeds** — `scripts/run_show.py` pulls fresh
-   data from **keyless, no-bill sources** and assembles a two-host (Alex + Sam)
-   script with a Python template (no LLM, no API key):
-   - **Google News RSS** (`news.google.com/rss/search`) — fresh headlines for
-     each show's topics.
-   - **Stooq** (`stooq.com` CSV) — free index levels + day-over-day % moves
-     (used by the equities show).
-2. **Generates audio** — `edge-tts` (Microsoft Edge's neural voices, **free, no
+1. **Gathers live facts from free, keyless feeds** — `scripts/run_show.py` pulls
+   fresh data:
+   - **Google News RSS** (`news.google.com/rss/search`) — headlines per topic.
+   - **Stooq** (`stooq.com` CSV) — index levels + day-over-day % moves (equities).
+2. **Synthesizes an analytical script with a free LLM** — the fetched data is
+   handed to **GitHub Models** (`openai/gpt-4o-mini` by default), which writes a
+   two-host (Alex + Sam) dialogue that **connects the stories and derives insight**,
+   grounded strictly in the fetched facts (no invented numbers). Authenticated
+   with the repo's built-in `GITHUB_TOKEN` — **free, no external key**. If the
+   model is ever unavailable, it falls back to a plain template so the show still
+   ships.
+3. **Generates audio** — `edge-tts` (Microsoft Edge's neural voices, **free, no
    API key**) synthesizes each Alex/Sam turn with its own voice, then ffmpeg
    (bundled) concatenates them into one compact `.mp3`.
-3. **Uploads to Drive** — `rclone` copies it to `Daily Audio/<show>-<date>.mp3`.
+4. **Uploads to Drive** — `rclone` copies it to `Daily Audio/<show>-<date>.mp3`.
 
-> **No LLM, by design.** Research and narration are both keyless: the facts come
-> straight from free live feeds and a deterministic template turns them into the
-> dialogue. Nothing can hit a billing wall. The tradeoff is that each episode is
-> a **live data readout** (today's numbers + headlines with sources) rather than
-> a synthesized analytical take. Topics/queries per show live in `SHOWS` at the
-> top of `scripts/run_show.py` — edit freely.
+> **Free, but with real synthesis.** The facts come from free live feeds; a free
+> LLM (GitHub Models, via the built-in Actions token) turns them into an
+> analytical briefing. No paid API, no billing wall. Per-show topics and audience
+> framing live in the `SHOWS` dict at the top of `scripts/run_show.py`.
 
 ---
 
 ## Setup — one secret
 
-Research (live free feeds) and audio (`edge-tts`) both need **no API key**, so
-the **only** secret is `RCLONE_CONF` for the Google Drive upload
-(**Settings → Secrets and variables → Actions → New repository secret**).
+The LLM synthesis uses **GitHub Models** with the repo's **built-in
+`GITHUB_TOKEN`** (the workflow grants it `models: read`) — no external key. Audio
+is keyless too. So the **only** secret you add is `RCLONE_CONF` for the Google
+Drive upload (**Settings → Secrets and variables → Actions → New repository
+secret**).
 
-> **No LLM keys at all.** There's no `ANTHROPIC_API_KEY` and no `GEMINI_API_KEY` —
-> the pipeline never calls a paid model, so it can't hit a billing wall. If a
-> `GEMINI_API_KEY` secret is still present from an earlier version, it's unused
-> and can be deleted.
+> **No paid keys.** No `ANTHROPIC_API_KEY`, no `GEMINI_API_KEY`. If either is
+> still present from an earlier version, it's unused and can be deleted.
+>
+> **If GitHub Models is disabled** for your org, or the built-in token is
+> refused, create a fine-grained **Personal Access Token** with the
+> **`models: read`** permission and add it as a secret named `GH_MODELS_TOKEN`
+> (the script prefers it over `GITHUB_TOKEN`). Otherwise each show falls back to
+> a plain headline-readout template.
 
 ### `RCLONE_CONF` — uploads audio to your Drive
 **Important correction:** I originally suggested a *service account*, but your
@@ -95,17 +103,22 @@ GitHub cron is **UTC**. The default `12 10 * * *` ≈ 6:12am US-Eastern. Edit th
 | Item | Rough cost |
 |---|---|
 | Live data (Google News RSS + Stooq) | **free** (keyless HTTP) |
+| LLM synthesis (GitHub Models) | **free** (built-in token; modest daily rate limits) |
 | edge-tts (audio) | **free** (no key, no bill) |
 | GitHub Actions | free (well under the 2,000 free min/month) |
-| Google Drive | free (your 15 GB; ~6 MB/episode as MP3) |
+| Google Drive | free (your 15 GB) |
 
-**The whole pipeline is $0 and needs no LLM/API key.**
+**The whole pipeline is $0 and needs no paid API key.**
 
 ## Customize
+- **LLM:** set `TEXT_MODEL` in the workflow (default `openai/gpt-4o-mini`; e.g.
+  `openai/gpt-4o`, `meta/Llama-3.3-70B-Instruct`). Higher-tier models have lower
+  free daily limits — fine for 3 shows/day.
 - **Voices:** set `EDGE_VOICE_A` / `EDGE_VOICE_B` env in the workflow (Alex / Sam).
   List all voices with `edge-tts --list-voices`. Defaults: `en-US-AvaNeural` /
   `en-US-AndrewNeural`.
 - **Pace:** set `EDGE_RATE` (e.g. `+8%`) to speed up or slow down delivery.
-- **Topics / headlines:** edit the `SHOWS` dict at the top of `scripts/run_show.py`
-  (news queries, which indexes to quote); `HEADLINES_PER_TOPIC` env (default 3).
+- **Topics / audience:** edit the `SHOWS` dict at the top of `scripts/run_show.py`
+  (news queries, indexes, and the per-show audience framing the LLM writes for);
+  `HEADLINES_PER_TOPIC` env (default 4).
 - **Add a show:** add an entry to `SHOWS` and add `<name>` to the matrix.

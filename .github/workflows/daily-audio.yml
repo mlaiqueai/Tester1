@@ -10,6 +10,10 @@ on:
     - cron: "3 11 * * *"
   workflow_dispatch: {}   # lets you trigger a manual test run from the Actions tab
 
+permissions:
+  contents: read
+  models: read            # lets the built-in GITHUB_TOKEN call GitHub Models (free)
+
 jobs:
   audio:
     runs-on: ubuntu-latest
@@ -30,7 +34,10 @@ jobs:
       - name: Set run date
         run: echo "RUN_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
 
-      - name: Build script from live free feeds (no API key)
+      - name: Build script — live free feeds + GitHub Models synthesis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEXT_MODEL: openai/gpt-4o-mini
         run: python scripts/run_show.py "${{ matrix.show }}" "script.txt"
 
       - name: Generate audio (MP3, edge-tts — free, no API key)
