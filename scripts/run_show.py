@@ -205,6 +205,10 @@ def run(show_id, out_path):
     text = "\n".join(f"{who}: {said}" for who, said in lines) + "\n"
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(text)
+    # Echo the transcript so it's visible in the Actions log and easy to review.
+    print(f"----- TRANSCRIPT: {show_id} -----")
+    print(text, end="")
+    print("----- END TRANSCRIPT -----")
     print(f"OK  {show_id}: wrote {len(lines)} lines / {len(text)} chars -> {out_path}")
 
 
