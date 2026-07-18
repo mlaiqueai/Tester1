@@ -9,41 +9,39 @@ Shows: `dx-daily` (full 4-pillar brief), `dx-deal-sourcer`, `dx-public-equities`
 ## How it works
 
 For each show, once a day, a GitHub Actions job:
-1. **Researches + writes a script** — calls **Gemini's free tier**
-   (`gemini-2.5-flash`) with **Google Search grounding** using `prompts/<show>.md`
-   → a two-host (Alex + Sam) podcast script. No per-call bill.
+1. **Builds a script from live free feeds** — `scripts/run_show.py` pulls fresh
+   data from **keyless, no-bill sources** and assembles a two-host (Alex + Sam)
+   script with a Python template (no LLM, no API key):
+   - **Google News RSS** (`news.google.com/rss/search`) — fresh headlines for
+     each show's topics.
+   - **Stooq** (`stooq.com` CSV) — free index levels + day-over-day % moves
+     (used by the equities show).
 2. **Generates audio** — `edge-tts` (Microsoft Edge's neural voices, **free, no
    API key**) synthesizes each Alex/Sam turn with its own voice, then ffmpeg
    (bundled) concatenates them into one compact `.mp3`.
 3. **Uploads to Drive** — `rclone` copies it to `Daily Audio/<show>-<date>.mp3`.
 
-> **Note on "the skills":** GitHub's runners can't reach your Claude Cowork
-> plugin skills or Google connectors. So each show is a *self-contained research
-> prompt distilled from the skill* (in `prompts/`), run against Gemini's Google
-> Search grounding. The intelligence is faithful; the plumbing is standalone.
+> **No LLM, by design.** Research and narration are both keyless: the facts come
+> straight from free live feeds and a deterministic template turns them into the
+> dialogue. Nothing can hit a billing wall. The tradeoff is that each episode is
+> a **live data readout** (today's numbers + headlines with sources) rather than
+> a synthesized analytical take. Topics/queries per show live in `SHOWS` at the
+> top of `scripts/run_show.py` — edit freely.
 
 ---
 
-## Setup — two secrets
+## Setup — one secret
 
-Both the research and the audio now run for **free**, so there are only two
-secrets to add (**Settings → Secrets and variables → Actions → New repository
-secret**).
+Research (live free feeds) and audio (`edge-tts`) both need **no API key**, so
+the **only** secret is `RCLONE_CONF` for the Google Drive upload
+(**Settings → Secrets and variables → Actions → New repository secret**).
 
-### 1. `GEMINI_API_KEY` — free-tier research + scriptwriting
-- Create a key at <https://aistudio.google.com/apikey>.
-- Copy it into a secret named `GEMINI_API_KEY`.
-- **Billing:** the `gemini-2.5-flash` text model and Google Search grounding are
-  used on the **free tier** — no per-call bill. Free tier has daily request caps,
-  which comfortably cover three shows a day. (Note: this is Gemini *text*, which
-  is free — unlike Gemini *TTS*, which needs prepaid credits. Audio doesn't use
-  Gemini at all; it uses `edge-tts`.)
+> **No LLM keys at all.** There's no `ANTHROPIC_API_KEY` and no `GEMINI_API_KEY` —
+> the pipeline never calls a paid model, so it can't hit a billing wall. If a
+> `GEMINI_API_KEY` secret is still present from an earlier version, it's unused
+> and can be deleted.
 
-> **Audio has no key and no bill either.** `edge-tts` uses Microsoft Edge's free
-> read-aloud voices, so the `GEMINI_API_KEY` above is only for the research step.
-> There is no longer any `ANTHROPIC_API_KEY` — the pipeline is fully free.
-
-### 2. `RCLONE_CONF` — uploads audio to your Drive
+### `RCLONE_CONF` — uploads audio to your Drive
 **Important correction:** I originally suggested a *service account*, but your
 Drive is a consumer Gmail account, and service accounts **can't own files there**
 (no storage quota) — uploads would fail. The reliable path is **rclone with an
@@ -76,7 +74,7 @@ That token lets the workflow upload as you, with no browser and no PC on.
    git remote add origin https://github.com/<you>/daily-dx-audio.git
    git push -u origin main
    ```
-3. Add the two secrets above.
+3. Add the `RCLONE_CONF` secret above.
 4. **Actions tab → enable workflows** if prompted.
 
 ## Test it before trusting the schedule
@@ -96,15 +94,18 @@ GitHub cron is **UTC**. The default `12 10 * * *` ≈ 6:12am US-Eastern. Edit th
 ## Cost summary
 | Item | Rough cost |
 |---|---|
-| Gemini research (3 shows/day) | **free** (free-tier `gemini-2.5-flash` + grounding) |
+| Live data (Google News RSS + Stooq) | **free** (keyless HTTP) |
 | edge-tts (audio) | **free** (no key, no bill) |
 | GitHub Actions | free (well under the 2,000 free min/month) |
 | Google Drive | free (your 15 GB; ~6 MB/episode as MP3) |
+
+**The whole pipeline is $0 and needs no LLM/API key.**
 
 ## Customize
 - **Voices:** set `EDGE_VOICE_A` / `EDGE_VOICE_B` env in the workflow (Alex / Sam).
   List all voices with `edge-tts --list-voices`. Defaults: `en-US-AvaNeural` /
   `en-US-AndrewNeural`.
 - **Pace:** set `EDGE_RATE` (e.g. `+8%`) to speed up or slow down delivery.
-- **Research model:** change `TEXT_MODEL` (default `gemini-2.5-flash`).
-- **Add a show:** drop a `prompts/<name>.md` and add `<name>` to the matrix.
+- **Topics / headlines:** edit the `SHOWS` dict at the top of `scripts/run_show.py`
+  (news queries, which indexes to quote); `HEADLINES_PER_TOPIC` env (default 3).
+- **Add a show:** add an entry to `SHOWS` and add `<name>` to the matrix.
