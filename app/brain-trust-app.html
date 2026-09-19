@@ -1,0 +1,577 @@
+<title>Brain Trust</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg:#f1f3ef; --panel:#ffffff; --panel-2:#f7f8f5; --ink:#14201b; --muted:#5e6e66;
+    --line:#dce2dc; --line-2:#eef1ed;
+    --green:#0e7a4c; --green-bg:#e3f1e9; --amber:#a9610c; --amber-bg:#f8eddf;
+    --violet:#6b41a4; --violet-bg:#efe9f8; --red:#a9271c; --red-bg:#f7e5e3;
+    --teal:#0c5c55; --shadow:0 1px 2px rgba(20,32,27,.06);
+    --display:"Newsreader",Georgia,serif;
+    --ui:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0d1411; --panel:#16201c; --panel-2:#1b2621; --ink:#e9efe9; --muted:#94a49b;
+      --line:#24302a; --line-2:#1f2a25;
+      --green:#4fc38b; --green-bg:#13301f; --amber:#dfa662; --amber-bg:#31220e;
+      --violet:#b592e2; --violet-bg:#241a33; --red:#ee8a80; --red-bg:#331614;
+      --teal:#58b9aa; --shadow:0 1px 2px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0d1411; --panel:#16201c; --panel-2:#1b2621; --ink:#e9efe9; --muted:#94a49b;
+    --line:#24302a; --line-2:#1f2a25;
+    --green:#4fc38b; --green-bg:#13301f; --amber:#dfa662; --amber-bg:#31220e;
+    --violet:#b592e2; --violet-bg:#241a33; --red:#ee8a80; --red-bg:#331614;
+    --teal:#58b9aa; --shadow:0 1px 2px rgba(0,0,0,.35);
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font:400 15px/1.55 var(--ui); -webkit-font-smoothing:antialiased;
+  }
+  .shell { max-width:560px; margin:0 auto; padding:0 16px; padding-block:0 48px; }
+  header.bar {
+    position:sticky; top:env(safe-area-inset-top, 0px); z-index:5;
+    background:var(--bg); border-bottom:1px solid var(--line); margin:0 -16px 18px;
+    padding:14px 16px 0;
+  }
+  .wordmark { display:flex; align-items:baseline; gap:9px; }
+  .wordmark h1 { font:500 21px/1 var(--display); letter-spacing:-.01em; margin:0; }
+  .wordmark span { font:500 10px/1 var(--ui); letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); }
+  .seats { display:flex; gap:22px; margin-top:12px; }
+  .seats button {
+    appearance:none; background:none; border:none; cursor:pointer; padding:0 0 10px;
+    font:600 14px/1 var(--ui); color:var(--muted); border-bottom:2px solid transparent;
+  }
+  .seats button[aria-selected="true"] { color:var(--ink); border-bottom-color:var(--teal); }
+  .seats button:focus-visible { outline:2px solid var(--teal); outline-offset:3px; }
+  .note { color:var(--muted); font-size:13px; margin:0 0 16px; }
+  .note strong { color:var(--ink); font-weight:600; }
+  .rows { display:flex; flex-direction:column; gap:8px; }
+  .row {
+    display:grid; grid-template-columns:1fr auto; gap:6px 12px; align-items:center;
+    width:100%; text-align:left; cursor:pointer;
+    background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--line);
+    border-radius:8px; padding:12px 13px; box-shadow:var(--shadow); color:inherit;
+    font:inherit; font-family:var(--ui);
+  }
+  .row:hover { border-color:var(--muted); }
+  .row:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+  .row.green { border-left-color:var(--green); }
+  .row.amber { border-left-color:var(--amber); }
+  .row.violet { border-left-color:var(--violet); }
+  .row .code { font:500 11px/1 var(--mono); letter-spacing:.04em; color:var(--muted); }
+  .row .name { font:400 16px/1.3 var(--display); margin-top:3px; }
+  .row .meta { grid-column:1/-1; display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+    font-size:12px; color:var(--muted); }
+  .chip {
+    display:inline-block; padding:2px 8px; border-radius:20px; white-space:nowrap;
+    font:600 11px/1.5 var(--ui); letter-spacing:.02em;
+  }
+  .chip.green { color:var(--green); background:var(--green-bg); }
+  .chip.amber { color:var(--amber); background:var(--amber-bg); }
+  .chip.violet { color:var(--violet); background:var(--violet-bg); }
+  .chip.red { color:var(--red); background:var(--red-bg); }
+  .chip.flat { color:var(--muted); background:var(--panel-2); }
+  .back {
+    appearance:none; background:none; border:none; padding:0; cursor:pointer; color:var(--muted);
+    font:500 13px/1 var(--ui); margin-bottom:14px;
+  }
+  .back:hover { color:var(--ink); }
+  .detail h2 { font:400 24px/1.22 var(--display); margin:8px 0 6px; text-wrap:balance; }
+  .detail .code { font:500 11px/1 var(--mono); letter-spacing:.06em; color:var(--muted); }
+  .abstract {
+    background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px;
+    margin:14px 0 22px; color:var(--ink); font-size:14.5px;
+  }
+  .abstract .seal { display:block; font:500 10px/1 var(--ui); letter-spacing:.12em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+  .q { border-top:1px solid var(--line-2); padding:15px 0 4px; }
+  .q:first-of-type { border-top:none; }
+  .q p { margin:0 0 10px; font-size:14.5px; }
+  .scale { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+  .scale button {
+    appearance:none; cursor:pointer; padding:11px 0; border-radius:7px;
+    border:1px solid var(--line); background:var(--panel); color:var(--muted);
+    font:500 15px/1 var(--mono); font-variant-numeric:tabular-nums;
+  }
+  .scale button[aria-pressed="true"] { background:var(--teal); border-color:var(--teal); color:#fff; }
+  .scale button:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+  :root[data-theme="dark"] .scale button[aria-pressed="true"],
+  .scale button[aria-pressed="true"] { color:var(--bg); }
+  .anchors { display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted);
+    margin-top:6px; }
+  textarea {
+    width:100%; margin-top:14px; min-height:74px; padding:10px 11px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel); color:var(--ink);
+    font:400 14px/1.5 var(--ui); resize:vertical;
+  }
+  textarea:focus-visible, input:focus-visible { outline:2px solid var(--teal); outline-offset:1px; }
+  .actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:16px; align-items:center; }
+  button.primary, button.gate {
+    appearance:none; cursor:pointer; border-radius:8px; padding:11px 17px;
+    font:600 14px/1 var(--ui); border:1px solid transparent;
+  }
+  button.primary { background:var(--ink); color:var(--bg); }
+  button.gate.green { background:var(--green); color:#fff; }
+  button.gate.red { background:transparent; color:var(--red); border-color:var(--red); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.primary:focus-visible, button.gate:focus-visible { outline:2px solid var(--teal);
+    outline-offset:2px; }
+  .hint { font-size:12.5px; color:var(--muted); }
+  .readout { display:flex; flex-direction:column; gap:11px; margin:6px 0 20px; }
+  .metric { display:grid; grid-template-columns:118px 1fr 34px; gap:10px; align-items:center;
+    font-size:13px; }
+  .metric .label { color:var(--muted); }
+  .metric .track { height:6px; border-radius:4px; background:var(--line-2); overflow:hidden; }
+  .metric .fill { display:block; height:100%; background:var(--teal); border-radius:4px; }
+  .metric .val { font:500 13px/1 var(--mono); font-variant-numeric:tabular-nums; text-align:right; }
+  .headline { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px;
+    margin:18px 0 6px; }
+  .big { display:flex; flex-direction:column; align-items:flex-start; gap:8px;
+    font:500 30px/1 var(--mono); font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  .big small { font:500 10px/1.3 var(--ui); letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); }
+  .gates { display:flex; flex-direction:column; gap:9px; margin-top:6px; }
+  .gates li { list-style:none; display:flex; gap:9px; align-items:baseline; font-size:13.5px; }
+  .gates .when { font:400 11px/1 var(--mono); color:var(--muted); margin-left:auto;
+    white-space:nowrap; padding-left:8px; }
+  ul { padding:0; margin:0; }
+  .actions input[type="text"] {
+    flex:1 1 100%; padding:10px 11px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel); color:var(--ink); font:400 14px/1.4 var(--ui);
+  }
+  .empty { color:var(--muted); font-size:14px; padding:22px 0; }
+  footer { margin-top:30px; padding-top:14px; border-top:1px solid var(--line-2);
+    color:var(--muted); font-size:12px; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+
+<div class="shell">
+  <header class="bar">
+    <div class="wordmark">
+      <h1>Brain Trust</h1><span>Platform &amp; Fund</span>
+    </div>
+    <div class="seats" role="tablist" aria-label="Seat">
+      <button id="seat-reads" role="tab" aria-selected="true">My reads</button>
+      <button id="seat-ic" role="tab" aria-selected="false">Committee</button>
+    </div>
+  </header>
+  <main id="main"><p class="empty">Opening the board…</p></main>
+  <footer id="foot"></footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var QUESTIONS = [
+    ["adoption", "Would this change your practice if the evidence held?", "No change", "Changes it"],
+    ["significance", "Is the clinical problem worth solving at this size?", "Marginal", "Major"],
+    ["evidence", "Does the evidence presented support the claim?", "It doesn't", "Fully"],
+    ["moat", "Is there anything a competitor cannot copy in 24 months?", "Nothing", "Substantial"],
+    ["engage", "Would you personally engage on this deal?", "No", "Yes"]
+  ];
+  var TILE = { green: ["green", "Co-invest"], orange: ["amber", "Consulting"], purple: ["violet", "Know-how"] };
+  var QUORUM_MIN = 8, QUORUM_RATE = 0.25, SPREAD_MAX = 1.35, POSITIVE_MIN = 3.4;
+
+  var S = {
+    seat: "reads", open: null, deals: [], reads: [], uid: null, canEdit: false,
+    db: null, ready: false, draft: {}, comment: "", busy: false, flash: ""
+  };
+
+  var main = document.getElementById("main");
+  var foot = document.getElementById("foot");
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function chip(cls, text) { return el("span", "chip " + cls, text); }
+
+  // ---- consensus, the same rules the console applies -----------------------
+  function tally(deal) {
+    var rows = S.reads.filter(function (r) { return r.deal === deal.code; });
+    var out = { n: rows.length, cohort: deal.cohortSize || 0, means: {}, signal: "inconclusive",
+                quorum: false, spread: null, index: null, appetite: null };
+    out.rate = out.cohort ? rows.length / out.cohort : 0;
+    if (!rows.length) return out;
+    QUESTIONS.forEach(function (q) {
+      var sum = rows.reduce(function (a, r) { return a + (Number(r[q[0]]) || 0); }, 0);
+      out.means[q[0]] = sum / rows.length;
+    });
+    var m = rows.map(function (r) { return Number(r.adoption) || 0; });
+    var avg = out.means.adoption;
+    out.spread = Math.sqrt(m.reduce(function (a, v) { return a + (v - avg) * (v - avg); }, 0) / m.length);
+    out.index = 100 * (avg / 5) * (0.5 + 0.5 * out.means.evidence / 5);
+    out.appetite = 100 * rows.filter(function (r) { return Number(r.engage) >= 4; }).length / rows.length;
+    out.quorum = rows.length >= QUORUM_MIN && out.rate >= QUORUM_RATE;
+    if (!out.quorum) out.signal = "inconclusive";
+    else if (out.spread > SPREAD_MAX) out.signal = "split";
+    else out.signal = avg >= POSITIVE_MIN ? "positive" : "negative";
+    return out;
+  }
+  function signalChip(sig) {
+    var tone = { positive: "green", negative: "red", split: "amber", inconclusive: "flat" }[sig];
+    return chip(tone, sig);
+  }
+  function myRead(code) {
+    for (var i = 0; i < S.reads.length; i++) {
+      if (S.reads[i].deal === code && S.reads[i].by === S.uid) return S.reads[i];
+    }
+    return null;
+  }
+
+  // ---- render --------------------------------------------------------------
+  function render() {
+    main.replaceChildren();
+    if (S.flash) {
+      var f = el("p", "note");
+      f.appendChild(el("strong", null, S.flash));
+      main.appendChild(f);
+    }
+    if (!S.ready) { main.appendChild(el("p", "empty", "Opening the board…")); return; }
+    if (!S.deals.length) {
+      main.appendChild(el("p", "empty",
+        "No opportunities on the board yet. Routed deals appear here for the cohort to read."));
+      return;
+    }
+    if (S.open) { renderDetail(S.open); } else { renderList(); }
+    renderFoot();
+  }
+
+  function renderList() {
+    var note = el("p", "note");
+    note.textContent = S.seat === "reads"
+      ? "Deals routed to your cohort. You see a blinded abstract until the company consents to disclosure — five questions, two minutes."
+      : "Every routed deal with its cohort read. A gate is green or red; there is no yellow.";
+    main.appendChild(note);
+
+    var live = S.deals.filter(function (d) { return d.status === "active"; });
+    var rest = S.deals.filter(function (d) { return d.status !== "active"; });
+    var rows = el("div", "rows");
+    live.concat(rest).forEach(function (d) { rows.appendChild(listRow(d)); });
+    main.appendChild(rows);
+  }
+
+  function listRow(deal) {
+    var tile = TILE[deal.tile] || TILE.green;
+    var row = el("button", "row " + tile[0]);
+    row.type = "button";
+    var left = el("div");
+    left.appendChild(el("div", "code", deal.code));
+    left.appendChild(el("div", "name", deal.consentToDisclose ? deal.name : "Opportunity " + deal.code));
+    row.appendChild(left);
+
+    var t = tally(deal);
+    var right = el("div");
+    if (S.seat === "reads") {
+      right.appendChild(myRead(deal.code) ? chip("flat", "filed") : chip(tile[0], "open"));
+    } else {
+      right.appendChild(signalChip(t.signal));
+    }
+    row.appendChild(right);
+
+    var meta = el("div", "meta");
+    meta.appendChild(chip(tile[0], tile[1]));
+    meta.appendChild(el("span", null, deal.focus.replace(/_/g, " ")));
+    meta.appendChild(el("span", null, "·"));
+    meta.appendChild(el("span", null, t.n + " of " + (deal.cohortSize || "?") + " routed"));
+    if (deal.status !== "active") {
+      meta.appendChild(el("span", null, "·"));
+      meta.appendChild(chip("flat", deal.status));
+    }
+    row.appendChild(meta);
+
+    row.addEventListener("click", function () {
+      S.open = deal.code; S.flash = "";
+      var mine = myRead(deal.code);
+      S.draft = mine ? { adoption: mine.adoption, significance: mine.significance,
+                         evidence: mine.evidence, moat: mine.moat, engage: mine.engage } : {};
+      S.comment = mine && mine.comment ? mine.comment : "";
+      render();
+      window.scrollTo(0, 0);
+    });
+    return row;
+  }
+
+  function dealByCode(code) {
+    return S.deals.filter(function (d) { return d.code === code; })[0] || null;
+  }
+
+  function renderDetail(code) {
+    var deal = dealByCode(code);
+    if (!deal) { S.open = null; render(); return; }
+    var tile = TILE[deal.tile] || TILE.green;
+
+    var back = el("button", "back", "← All deals");
+    back.type = "button";
+    back.addEventListener("click", function () { S.open = null; S.flash = ""; render(); });
+    main.appendChild(back);
+
+    var head = el("div", "detail");
+    head.appendChild(el("div", "code", deal.code));
+    head.appendChild(el("h2", null, deal.consentToDisclose ? deal.name : "Opportunity " + deal.code));
+    var meta = el("div", "meta");
+    meta.appendChild(chip(tile[0], tile[1]));
+    meta.appendChild(el("span", null, " " + deal.focus.replace(/_/g, " ")));
+    head.appendChild(meta);
+    main.appendChild(head);
+
+    var abs = el("div", "abstract");
+    abs.appendChild(el("span", "seal", deal.consentToDisclose
+      ? "Company disclosed — consent on file" : "Blinded — no company identified"));
+    abs.appendChild(el("div", null, deal.abstract));
+    main.appendChild(abs);
+
+    if (S.seat === "reads") { renderQuestions(deal); } else { renderCommittee(deal); }
+  }
+
+  function renderQuestions(deal) {
+    var mine = myRead(deal.code);
+    QUESTIONS.forEach(function (q) {
+      var block = el("div", "q");
+      block.appendChild(el("p", null, q[1]));
+      var scale = el("div", "scale");
+      for (var v = 1; v <= 5; v++) {
+        (function (value) {
+          var b = el("button", null, String(value));
+          b.type = "button";
+          b.id = "q-" + q[0] + "-" + value;
+          b.setAttribute("aria-label", q[1] + " — " + value + " of 5");
+          b.setAttribute("aria-pressed", S.draft[q[0]] === value ? "true" : "false");
+          b.addEventListener("click", function () { S.draft[q[0]] = value; render(); });
+          scale.appendChild(b);
+        })(v);
+      }
+      block.appendChild(scale);
+      var anchors = el("div", "anchors");
+      anchors.appendChild(el("span", null, q[2]));
+      anchors.appendChild(el("span", null, q[3]));
+      block.appendChild(anchors);
+      main.appendChild(block);
+    });
+
+    var ta = el("textarea");
+    ta.id = "comment";
+    ta.placeholder = "What would change your answer? (a written read carries weight in your index)";
+    ta.value = S.comment;
+    ta.addEventListener("input", function () { S.comment = ta.value; });
+    main.appendChild(ta);
+
+    var complete = QUESTIONS.every(function (q) { return S.draft[q[0]]; });
+    var actions = el("div", "actions");
+    var submit = el("button", "primary", mine ? "Update my read" : "File my read");
+    submit.type = "button";
+    submit.disabled = !complete || S.busy || !S.db || !S.uid;
+    submit.addEventListener("click", function () { fileRead(deal); });
+    actions.appendChild(submit);
+    if (!S.db || !S.uid) {
+      actions.appendChild(el("span", "hint", "This view can't reach shared storage, so reads can't be filed."));
+    } else if (!complete) {
+      actions.appendChild(el("span", "hint", "All five answers, then file."));
+    } else if (mine) {
+      actions.appendChild(el("span", "hint", "Filed " + (mine.at || "").slice(0, 10) + " — filing again replaces it."));
+    }
+    main.appendChild(actions);
+  }
+
+  function renderCommittee(deal) {
+    var t = tally(deal);
+    var head = el("div", "headline");
+    var sig = el("div", "big");
+    sig.appendChild(el("small", null, "Cohort signal"));
+    sig.appendChild(signalChip(t.signal));
+    head.appendChild(sig);
+    var idx = el("div", "big", t.index === null ? "—" : t.index.toFixed(0));
+    idx.insertBefore(el("small", null, "Adoption index"), idx.firstChild);
+    head.appendChild(idx);
+    var app = el("div", "big", t.appetite === null ? "—" : t.appetite.toFixed(0) + "%");
+    app.insertBefore(el("small", null, "Would engage"), app.firstChild);
+    head.appendChild(app);
+    main.appendChild(head);
+
+    var line = el("p", "note");
+    line.textContent = t.n + " of " + (deal.cohortSize || "?") + " routed physicians have read"
+      + (t.spread === null ? "" : "; spread " + t.spread.toFixed(2))
+      + (t.quorum ? " — quorum met." : " — below quorum (" + QUORUM_MIN + " reads and "
+        + Math.round(QUORUM_RATE * 100) + "% of the cohort).");
+    main.appendChild(line);
+
+    if (t.n) {
+      var readout = el("div", "readout");
+      QUESTIONS.forEach(function (q) {
+        var m = t.means[q[0]];
+        var row = el("div", "metric");
+        row.appendChild(el("span", "label", q[0] === "engage" ? "would engage"
+          : q[0] === "significance" ? "significance" : q[0]));
+        var track = el("div", "track");
+        var fill = el("span", "fill");
+        fill.style.width = (100 * m / 5).toFixed(1) + "%";
+        track.appendChild(fill);
+        row.appendChild(track);
+        row.appendChild(el("span", "val", m.toFixed(2)));
+        readout.appendChild(row);
+      });
+      main.appendChild(readout);
+    }
+
+    var gates = (deal.gates || []);
+    if (gates.length) {
+      main.appendChild(el("p", "note", "Gate history"));
+      var list = el("ul", "gates");
+      gates.forEach(function (g) {
+        var li = el("li");
+        li.appendChild(chip(g.decision === "green" ? "green" : "red", g.decision));
+        li.appendChild(el("span", null, g.rationale));
+        li.appendChild(el("span", "when", (g.at || "").slice(0, 10)));
+        list.appendChild(li);
+      });
+      main.appendChild(list);
+    }
+
+    if (deal.status !== "active") {
+      main.appendChild(el("p", "hint", "This deal is " + deal.status + " — no gate left to call."));
+      return;
+    }
+    if (!S.canEdit) {
+      main.appendChild(el("p", "hint",
+        "Calling the gate is the committee seat. You can read the cohort, not record the call."));
+      return;
+    }
+
+    var why = el("input");
+    why.type = "text";
+    why.id = "rationale";
+    why.placeholder = "Rationale — what made this a yes or a no";
+    var actions = el("div", "actions");
+    actions.appendChild(why);
+    var greenBtn = el("button", "gate green", "Record green");
+    greenBtn.type = "button";
+    greenBtn.disabled = t.signal !== "positive" || S.busy;
+    greenBtn.addEventListener("click", function () { callGate(deal, "green", why.value); });
+    var redBtn = el("button", "gate red", "Record red");
+    redBtn.type = "button";
+    redBtn.disabled = S.busy;
+    redBtn.addEventListener("click", function () { callGate(deal, "red", why.value); });
+    actions.appendChild(greenBtn);
+    actions.appendChild(redBtn);
+    main.appendChild(actions);
+    if (t.signal !== "positive") {
+      main.appendChild(el("p", "hint",
+        "Green is unavailable: the cohort reads " + t.signal + ", not positive. Red is always available — "
+        + "a deal leaves the board either way."));
+    }
+  }
+
+  function renderFoot() {
+    foot.replaceChildren();
+    var who = S.canEdit ? "Committee seat" : "Physician seat";
+    foot.textContent = who + " · means are unweighted here; the platform console applies each "
+      + "physician's index weighting.";
+  }
+
+  // ---- writes --------------------------------------------------------------
+  function fileRead(deal) {
+    if (!S.db || !S.uid || S.busy) return;
+    S.busy = true; render();
+    var body = {
+      deal: deal.code, by: S.uid, at: new Date().toISOString(),
+      adoption: S.draft.adoption, significance: S.draft.significance,
+      evidence: S.draft.evidence, moat: S.draft.moat, engage: S.draft.engage,
+      comment: S.comment || ""
+    };
+    S.db.doc("reads/" + deal.code + "__" + S.uid).set(body).then(function () {
+      S.busy = false; S.flash = "Read filed."; S.open = null; render();
+    }).catch(function (e) {
+      S.busy = false;
+      S.flash = e && e.code === "invalid_argument"
+        ? "This seat can read the board but not file to it."
+        : "Couldn't file that read — try again in a moment.";
+      render();
+    });
+  }
+
+  function callGate(deal, decision, rationale) {
+    if (!S.db || S.busy) return;
+    S.busy = true; render();
+    var gates = (deal.gates || []).concat([{
+      stage: deal.stage, decision: decision, at: new Date().toISOString(),
+      rationale: (rationale || "").trim() || "(no rationale recorded)"
+    }]);
+    var patch = { gates: gates };
+    if (decision === "red") { patch.status = "stopped"; } else { patch.stage = (deal.stage || 1) + 1; }
+    S.db.doc("deals/" + deal.code).update(patch).then(function () {
+      S.busy = false;
+      S.flash = decision === "green"
+        ? deal.code + " advances to stage " + patch.stage + "."
+        : deal.code + " stopped at stage " + deal.stage + ".";
+      S.open = null; render();
+    }).catch(function (e) {
+      S.busy = false;
+      S.flash = e && e.code === "invalid_argument"
+        ? "Recording a gate needs the committee seat."
+        : "Couldn't record that call — try again in a moment.";
+      render();
+    });
+  }
+
+  // ---- boot ----------------------------------------------------------------
+  document.getElementById("seat-reads").addEventListener("click", function () { setSeat("reads"); });
+  document.getElementById("seat-ic").addEventListener("click", function () { setSeat("ic"); });
+  function setSeat(seat) {
+    S.seat = seat; S.open = null; S.flash = "";
+    document.getElementById("seat-reads").setAttribute("aria-selected", String(seat === "reads"));
+    document.getElementById("seat-ic").setAttribute("aria-selected", String(seat === "ic"));
+    render();
+  }
+
+  function sortDeals(list) {
+    return list.sort(function (a, b) {
+      if ((a.status === "active") !== (b.status === "active")) return a.status === "active" ? -1 : 1;
+      return (a.order || 0) - (b.order || 0);
+    });
+  }
+
+  render();
+
+  if (!window.claude || !window.claude.use) { S.ready = true; render(); return; }
+
+  window.claude.use("user").then(function (user) {
+    if (!user) return null;
+    S.canEdit = user.canEdit ? (user.canEdit() === true) : false;
+    return user.id ? user.id() : null;
+  }).catch(function () { return null; }).then(function (id) {
+    S.uid = id || localId();
+    return window.claude.use("db");
+  }).then(function (db) {
+    S.db = db;
+    if (!db) { S.ready = true; render(); return; }
+    db.collection("deals").onSnapshot(function (snap) {
+      S.deals = sortDeals(snap.docs.map(function (d) { return d.data(); }));
+      S.ready = true; render();
+    }, function () { S.ready = true; render(); });
+    db.collection("reads").onSnapshot(function (snap) {
+      S.reads = snap.docs.map(function (d) { return d.data(); });
+      render();
+    }, function () { /* the board still reads without the cohort */ });
+  }).catch(function () { S.ready = true; render(); });
+
+  function localId() {
+    try {
+      var k = "bth-reader";
+      var v = window.localStorage.getItem(k);
+      if (!v) { v = "r-" + Math.random().toString(36).slice(2, 10); window.localStorage.setItem(k, v); }
+      return v;
+    } catch (e) { return "r-" + Math.random().toString(36).slice(2, 10); }
+  }
+})();
+</script>
