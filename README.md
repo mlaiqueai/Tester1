@@ -122,3 +122,19 @@ GitHub cron is **UTC**. The default `12 10 * * *` ≈ 6:12am US-Eastern. Edit th
   (news queries, indexes, and the per-show audience framing the LLM writes for);
   `HEADLINES_PER_TOPIC` env (default 4).
 - **Add a show:** add an entry to `SHOWS` and add `<name>` to the matrix.
+
+---
+
+## Also in this repo: the Brain Trust Holdings platform
+
+`bth/` is a working build of the platform and fund described in
+`Platform+Fund_v1` — the expert network and cohort routing, consensus reads and
+the Clinical Adoption Index, the stage 0–5 gate workflow, the revenue splits,
+and checkpoint tracking against the end-2028 and end-2030 targets. It shares
+nothing with the audio pipeline above except the repository.
+
+```bash
+python3 run_bth.py seed && python3 run_bth.py serve
+```
+
+See [BTH_PLATFORM.md](BTH_PLATFORM.md).

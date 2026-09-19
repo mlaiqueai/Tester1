@@ -8,3 +8,5 @@ rclone.conf
 !package.json
 .env
 __pycache__/
+
+bth.db
