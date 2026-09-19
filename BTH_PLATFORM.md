@@ -105,3 +105,30 @@ disclosures, patent families, licenses, trials, data partnerships and Fund 1's
 commitments. The named institutions are real; the physicians are synthetic.
 
 Data is stored in `bth.db` (gitignored). Delete it and re-seed at any time.
+
+## The app
+
+`app/brain-trust-app.html` is the physician-facing side of the platform, published
+as a private Artifact: https://claude.ai/artifact/49uhmMQQf7qh6GQZKnKUoK
+
+Two seats, one page.
+
+- **My reads** — the deals routed to your cohort, each behind a blinded abstract
+  until the company consents to disclosure, and the five questions the workflow
+  review specified: four on the clinical, scientific and technical read, and the
+  fifth on whether you would personally engage. Two minutes per deal.
+- **Committee** — the same deals with the cohort's read: signal, adoption index,
+  engagement appetite, per-question means, spread, and how far the response is
+  from quorum. The gate call is recorded here, green or red. Green is disabled
+  whenever the cohort reads anything but positive, and says why; red is always
+  available.
+
+Reads and gate calls persist in the artifact's shared store, so the cohort's
+answers accumulate across viewers and sessions. Recording a gate needs edit
+access on the artifact — that is the IC seat the review asked for; everyone else
+files reads and watches the board. Means shown in the app are unweighted; the
+console in `bth/` applies each physician's index weighting.
+
+The board is seeded with the same six opportunities as `bth/seed.py` and a demo
+cohort, so the three states are all visible at once: BTH-001 positive and
+decidable, BTH-006 split with green refused, BTH-004 still below quorum.
