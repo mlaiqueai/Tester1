@@ -6,5 +6,7 @@ key.txt
 rclone.conf
 *.json
 !package.json
+!data/curriculum.json
 .env
 __pycache__/
+out/

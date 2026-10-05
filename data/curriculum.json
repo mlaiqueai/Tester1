@@ -1,0 +1,386 @@
+[
+ {
+  "id": "A1",
+  "module": "Reimbursement Mechanics",
+  "title": "MolDx and the technical assessment process",
+  "scope": "How MolDx works — Palmetto's role, the dossier process, technical assessment vs coverage decisions, the timeline from dossier to LCD.",
+  "why": "MolDx coverage is often the gating event for molecular dx commercial viability. Investors price it in heavily.",
+  "questions": "How long does the average dossier-to-LCD cycle take? What's the approval rate? Which MAC jurisdictions matter most by volume? What recent MolDx decisions have moved markets?"
+ },
+ {
+  "id": "A2",
+  "module": "Reimbursement Mechanics",
+  "title": "MAC LCDs vs NCDs vs commercial coverage",
+  "scope": "The hierarchy — national vs local coverage, how MACs differ, how commercial payers respond to CMS decisions.",
+  "why": "Coverage strategy determines launch sequencing. Some companies chase NCDs; others run MAC-by-MAC.",
+  "questions": "What's the typical lag from CMS coverage to commercial follow-on? Which commercial payers lead vs lag? What's the strategic case for chasing an NCD vs accumulating LCDs?"
+ },
+ {
+  "id": "A3",
+  "module": "Reimbursement Mechanics",
+  "title": "CPT vs PLA codes; gap-fill vs cross-walk pricing",
+  "scope": "AMA's CPT process, the PLA (Proprietary Laboratory Analyses) carve-out, how gap-fill pricing works through the contractor's \"reasonable\" determination vs cross-walking to existing codes.",
+  "why": "Pricing is determined as much by code strategy as by clinical utility. Gap-fill can produce 3-5x ASP differences.",
+  "questions": "What's the typical gap-fill cycle and how often do prices reset? Which dx companies have played this game well? What's the case for PLA vs Category I?"
+ },
+ {
+  "id": "A4",
+  "module": "Reimbursement Mechanics",
+  "title": "ADLT (Advanced Diagnostic Laboratory Test) designation",
+  "scope": "PAMA's ADLT carveout, the qualifying criteria, the temporary pricing protections, the new ADLT applications recently approved.",
+  "why": "ADLT pricing protects launch economics for ~9 months. It's one of the few payer-side advantages a sole-source dx can secure.",
+  "questions": "How many ADLTs have been granted in the last 24 months? What's the typical ASP delta vs cross-walk? What are the renewal dynamics?"
+ },
+ {
+  "id": "A5",
+  "module": "Reimbursement Mechanics",
+  "title": "Z-codes and the role they play in claims",
+  "scope": "What Z-codes are (DEX Z-Code identifiers), how they're issued, why payers require them, the practical workflow for billing.",
+  "why": "Z-codes are the operational layer of MolDx coverage. No Z-code, no claim. Many startups underestimate this.",
+  "questions": "What's the Z-code application process timeline? Which payers require them beyond MolDx? How do Z-codes interact with PLA codes?"
+ },
+ {
+  "id": "A6",
+  "module": "Reimbursement Mechanics",
+  "title": "Prior authorization economics",
+  "scope": "PA burden — labor cost per claim, denial rates, appeal economics, the dx companies that have made PA reduction a strategic moat.",
+  "why": "PA can consume 5-15% of revenue in operational cost and 10-25% in lost claims. It's the silent killer of dx unit economics.",
+  "questions": "Who tracks PA denial rates publicly? What's the appeal-to-overturn ratio in molecular dx? Which dx companies have built PA-bypass workflows?"
+ },
+ {
+  "id": "A7",
+  "module": "Reimbursement Mechanics",
+  "title": "Patient cost-share and assistance economics",
+  "scope": "How patient out-of-pocket exposure shapes test volume, the role of patient assistance programs, the strategic decision to absorb cost-share.",
+  "why": "Cost-share suppression is a real volume driver. Dx companies that absorb it grow faster but burn more.",
+  "questions": "What's the patient OOP threshold above which order rates collapse? How do PAPs interact with anti-kickback rules? What's the ROI math on cost-share absorption?"
+ },
+ {
+  "id": "A8",
+  "module": "Reimbursement Mechanics",
+  "title": "Hospital outreach billing vs outpatient billing",
+  "scope": "The difference between dx revenue captured via hospital outpatient reimbursement (APC bundles) vs sendout outpatient lab billing.",
+  "why": "Same test, very different revenue. This is why some dx strategies focus on AMC channel vs national reference labs.",
+  "questions": "What's the typical revenue delta? How do hospital lab outreach programs structure pricing for their physicians? Where does Mayo Reference fit in this stack?"
+ },
+ {
+  "id": "B1",
+  "module": "Regulatory / Operating Environment",
+  "title": "LDT Final Rule status and the IVCT alternative",
+  "scope": "Where the FDA Final Rule stands today (litigation, enforcement discretion, phase-in), the IVCT legislative path, and what each scenario means commercially.",
+  "why": "This determines whether LDTs continue or whether everything shifts to FDA pathways. The investor pricing differs by ~10x.",
+  "questions": "What's the current litigation status? What enforcement discretion has FDA signaled? What's the IVCT path's realistic timeline?"
+ },
+ {
+  "id": "B2",
+  "module": "Regulatory / Operating Environment",
+  "title": "FDA pathways for IVDs — 510(k), De Novo, PMA, Breakthrough",
+  "scope": "The four main pathways, when each applies, typical timelines, costs, and the strategic implications for venture-backed dx.",
+  "why": "Pathway choice can be a 3-year delta in time-to-market and a $10M+ delta in cost.",
+  "questions": "What's the current 510(k) cycle time for molecular IVDs? How many breakthrough designations have gone to dx in the last 24 months? What's the realistic De Novo timeline?"
+ },
+ {
+  "id": "B3",
+  "module": "Regulatory / Operating Environment",
+  "title": "CLIA — high complexity, moderate, waived",
+  "scope": "The CLIA tier system, the operational requirements at each tier, the strategic role of CLIA-waived tests in PoC dynamics.",
+  "why": "Moving from high-complexity to waived can 10x a test's addressable market — but takes years of clinical evidence.",
+  "questions": "How many tests have moved from high-complexity to waived in the last 3 years? What's the typical evidence package required? Who are the reference operators for waived dx?"
+ },
+ {
+  "id": "B4",
+  "module": "Regulatory / Operating Environment",
+  "title": "CAP accreditation and proficiency testing",
+  "scope": "CAP's role, the inspection cycle, what proficiency testing covers, the operational implications for new entrants.",
+  "why": "CAP issues are operational killers. Lab consolidations often unwind because of CAP-related findings.",
+  "questions": "What CAP findings most commonly drive remediation? How does CAP intersect with FDA for IVDs? What's the practical cost of CAP non- compliance?"
+ },
+ {
+  "id": "B5",
+  "module": "Regulatory / Operating Environment",
+  "title": "NY CLEP and other state-level approvals",
+  "scope": "New York's separate clinical lab approval system, why it exists, which other states have meaningful approval requirements.",
+  "why": "NY CLEP can delay launch in NY by 6-18 months. For some dx categories, NY is 8-12% of national volume.",
+  "questions": "What's the current CLEP cycle time? Which dx categories get flagged most? Which states beyond NY matter (WA, FL, CA)?"
+ },
+ {
+  "id": "B6",
+  "module": "Regulatory / Operating Environment",
+  "title": "ISO 15189 in the lab",
+  "scope": "International accreditation, when it matters (mostly export and pharma partnerships), how it relates to CAP.",
+  "why": "For dx companies pursuing global pharma partnerships, ISO 15189 is often a precondition.",
+  "questions": "How many U.S. dx labs hold ISO 15189? What's the typical certification cost?"
+ },
+ {
+  "id": "B7",
+  "module": "Regulatory / Operating Environment",
+  "title": "Quality systems for IVDs (QSR / 21 CFR 820 / ISO 13485)",
+  "scope": "The quality system architecture that's required for FDA-cleared IVDs, how it differs from LDT operations.",
+  "why": "Many LDT-first dx companies hit a wall when transitioning to FDA pathways because their quality systems weren't designed for it.",
+  "questions": "What's the typical cost to retrofit a QSR system onto an LDT operation? Where do most companies fail in their first IVD audit?"
+ },
+ {
+  "id": "C1",
+  "module": "Adoption Dynamics",
+  "title": "How a test enters major society guidelines (NCCN, IDSA, KDIGO, AGA, AAN, ASCO)",
+  "scope": "The actual mechanics — how panels work, what evidence packages they require, the difference between Category 1, 2A, 2B in NCCN, etc.",
+  "why": "Guideline inclusion is often the inflection point for test volume. It also unlocks reimbursement via medical necessity.",
+  "questions": "What's the typical evidence package? How long from publication to guideline update? Which societies move fastest vs slowest?"
+ },
+ {
+  "id": "C2",
+  "module": "Adoption Dynamics",
+  "title": "KOL networks and their role in adoption",
+  "scope": "How dx companies build KOL networks, the difference between paid speakers and unpaid champions, the role of KOLs in payer dossiers.",
+  "why": "A test without 5-10 strong KOL champions struggles to cross from launch to mainstream adoption.",
+  "questions": "How do successful dx companies structure their KOL programs? What's the strategic difference between hub-and-spoke vs distributed networks?"
+ },
+ {
+  "id": "C3",
+  "module": "Adoption Dynamics",
+  "title": "EMR ordering — order set economics, decision support, friction",
+  "scope": "How tests get into Epic / Cerner order sets, what governance bodies decide, the role of CDS rules.",
+  "why": "Tests that aren't in the order set get ordered ~10x less often than tests that are. EMR integration is invisible but determinative.",
+  "questions": "What's the typical Epic-integration timeline? Who at the health system actually approves order set changes? What CDS levers exist?"
+ },
+ {
+  "id": "C4",
+  "module": "Adoption Dynamics",
+  "title": "Lab director psychology — sendout vs in-house decisions",
+  "scope": "How lab medical directors decide what to bring in-house, the role of volume thresholds, equipment amortization, staffing.",
+  "why": "Sendout-to-in-house decisions are massive volume shifts for dx companies. Predicting them is alpha.",
+  "questions": "What volume threshold typically triggers in-house assessment? What CapEx is required? How do lab directors weigh strategic vs financial?"
+ },
+ {
+  "id": "C5",
+  "module": "Adoption Dynamics",
+  "title": "Reference lab channel — Quest, LabCorp, ARUP, Mayo, Bioreference",
+  "scope": "How sendout works, who controls volume, the contracting dynamics, why some dx companies sell direct vs through reference labs.",
+  "why": "Reference labs have huge gravitational pull on test volume. Companies that crack their channel scale faster.",
+  "questions": "What's the typical reference lab contract structure? Who at Quest / LabCorp / ARUP makes inclusion decisions? What's Mayo Reference's strategic position?"
+ },
+ {
+  "id": "C6",
+  "module": "Adoption Dynamics",
+  "title": "Hospital-based outreach programs",
+  "scope": "AMC and community hospital lab outreach — Mayo's MCS, ARUP's channel, hospital-system reference operations.",
+  "why": "Hospital outreach is a different revenue model than reference lab sendout. Margins, contracting, and customer dynamics differ.",
+  "questions": "What % of national lab volume runs through hospital outreach vs reference? How does this differ by dx category?"
+ },
+ {
+  "id": "C7",
+  "module": "Adoption Dynamics",
+  "title": "Direct-to-consumer dynamics",
+  "scope": "DTC dx (Cologuard, Galleri), the marketing economics, the prescription requirements, the FTC/state regulatory layer.",
+  "why": "DTC bypasses ordering friction but creates new pressures (CAC, prescription handling, telehealth integration).",
+  "questions": "What's the typical DTC CAC for screening dx? Which states block what? What's the conversion-to-prescription rate?"
+ },
+ {
+  "id": "C8",
+  "module": "Adoption Dynamics",
+  "title": "Companion diagnostics and pharma-driven dx",
+  "scope": "How CDx gets developed, the FDA-pharma codevelopment pathway, the economics of CDx vs broader IVD.",
+  "why": "CDx revenue is often guaranteed by pharma at launch but capped. The strategic question is when to broaden beyond CDx.",
+  "questions": "What's the typical CDx revenue per drug? What's the time from drug approval to CDx commoditization? Which CDx have escaped to broader use?"
+ },
+ {
+  "id": "D1",
+  "module": "Test Economics",
+  "title": "Sample volume to break-even",
+  "scope": "The unit-economics math — fixed bioinformatics + lab capacity, variable per-sample cost, the volume curve to gross-margin positivity.",
+  "why": "Most dx companies misjudge their break-even by 2-3x. Burn rate visibility depends on this.",
+  "questions": "What's the typical break-even volume for an NGS-based dx? How does it differ for PCR-based, mass-spec-based, etc.?"
+ },
+ {
+  "id": "D2",
+  "module": "Test Economics",
+  "title": "ASP dynamics over the test lifecycle",
+  "scope": "How ASP evolves — initial ADLT or gap-fill, payer mix shift, out-of-network compression, eventual cross-walk to commodity.",
+  "why": "ASP is rarely flat. Compression timelines determine enterprise value.",
+  "questions": "What's the typical ASP curve over 5 years? Which test categories are most resistant to compression?"
+ },
+ {
+  "id": "D3",
+  "module": "Test Economics",
+  "title": "COGS — reagents, instruments, labor, sample logistics",
+  "scope": "The cost stack — what % goes where, where compression is possible, where it isn't.",
+  "why": "COGS architecture determines who can compete on price and who must compete on differentiation.",
+  "questions": "What's the typical COGS breakdown for NGS, PCR, mass-spec, immunoassay-based dx? Where does sample logistics dominate?"
+ },
+ {
+  "id": "D4",
+  "module": "Test Economics",
+  "title": "Volume-vs-price tradeoffs",
+  "scope": "When to accept lower ASP for higher volume (commercial vs Medicare strategy), the elasticity of demand for dx.",
+  "why": "Most dx companies default to \"high ASP, low volume\" and never question it.",
+  "questions": "Which dx companies have successfully traded ASP for volume? What's the inflection point in volume that justifies it?"
+ },
+ {
+  "id": "D5",
+  "module": "Test Economics",
+  "title": "Bioinformatics infrastructure as fixed cost",
+  "scope": "The one-time and ongoing cost of bioinformatics — pipeline development, validation, maintenance, scaling.",
+  "why": "Bioinformatics is often the under-budgeted line item. It also determines how fast a company can iterate.",
+  "questions": "What's the typical bioinformatics headcount per assay? What fraction of dx engineering is regulatory-driven vs feature-driven?"
+ },
+ {
+  "id": "D6",
+  "module": "Test Economics",
+  "title": "Distribution — in-house lab vs partnership vs licensing",
+  "scope": "The three main distribution models, when each makes sense, the margin implications.",
+  "why": "Distribution choice is often irreversible. Companies that pick the wrong model spend years repositioning.",
+  "questions": "What's the margin delta across the three models? Which dx categories favor which model?"
+ },
+ {
+  "id": "D7",
+  "module": "Test Economics",
+  "title": "Burn rate dynamics in dx companies",
+  "scope": "How dx burn rates compare to therapeutics, devices, software. The major burn drivers and their compression levers.",
+  "why": "Investors evaluate burn against revenue trajectory. Dx burn norms are very different from therapeutic norms.",
+  "questions": "What's the typical burn rate for a clinical-stage dx? Pre-launch? Post-launch? What's the burn-multiple benchmark?"
+ },
+ {
+  "id": "E1",
+  "module": "Competitive Structure",
+  "title": "First-mover vs fast-follower in dx",
+  "scope": "When first-mover advantage holds (network-effect dx, KOL-tied dx) vs when fast-followers win (commodity assays, technically routine).",
+  "why": "Investment thesis depends on which side of this you're on.",
+  "questions": "Which dx categories are first-mover-protected vs not? Examples of fast-followers winning?"
+ },
+ {
+  "id": "E2",
+  "module": "Competitive Structure",
+  "title": "Commoditization curves — what protects vs erodes",
+  "scope": "What makes a dx defensible long-term — IP, operational moat, network effects, KOL relationships, payer contracts.",
+  "why": "Most dx commoditize within 5-7 years. Which won't?",
+  "questions": "What's the typical commoditization timeline? Which moats hold longest?"
+ },
+ {
+  "id": "E3",
+  "module": "Competitive Structure",
+  "title": "IP moats vs operational moats",
+  "scope": "Patent protection in dx (limited), trade-secret protection (stronger), the operational moat of a working lab + KOL network + payer contracts.",
+  "why": "Investors over-weight IP and under-weight operational moats. The latter often matters more.",
+  "questions": "How many dx companies have lost on IP litigation? What's the strategic case for trade-secret over patent?"
+ },
+ {
+  "id": "E4",
+  "module": "Competitive Structure",
+  "title": "Multiplex strategies and cannibalization",
+  "scope": "When multiplex panels cannibalize singleton tests (sometimes good for the company, sometimes bad), the strategic decision points.",
+  "why": "Multiplex shifts ASP and margins. The math isn't obvious.",
+  "questions": "When do payers reimburse multiplex above the sum of singletons? When do they reimburse below?"
+ },
+ {
+  "id": "E5",
+  "module": "Competitive Structure",
+  "title": "Platform plays vs single-test plays",
+  "scope": "The strategic difference — building a platform that supports many assays vs commercializing one assay deeply.",
+  "why": "Platform plays raise differently and exit differently than single-test plays.",
+  "questions": "Which dx companies have successfully transitioned from single-test to platform?"
+ },
+ {
+  "id": "E6",
+  "module": "Competitive Structure",
+  "title": "How acquirers value dx assets",
+  "scope": "Strategic acquirers' valuation models — revenue multiples, technology multiples, strategic-fit premia, channel-fit premia.",
+  "why": "Exit strategy depends on understanding what acquirers pay for and why.",
+  "questions": "What revenue multiples have recent dx M&A printed at? What strategic-fit premia have been observable?"
+ },
+ {
+  "id": "F1",
+  "module": "Buyer / User Personas",
+  "title": "Pathologists — drivers and frictions",
+  "scope": "What motivates them, what frictions they face, what they read, who influences them, and what gets them to change ordering behavior.",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "F2",
+  "module": "Buyer / User Personas",
+  "title": "Oncologists — treatment-decision economics",
+  "scope": "What motivates them, what frictions they face, what they read, who influences them, and what gets them to change ordering behavior.",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "F3",
+  "module": "Buyer / User Personas",
+  "title": "ID docs — stewardship pressure, sepsis dynamics",
+  "scope": "What motivates them, what frictions they face, what they read, who influences them, and what gets them to change ordering behavior.",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "F4",
+  "module": "Buyer / User Personas",
+  "title": "Gastroenterologists — screening economics",
+  "scope": "What motivates them, what frictions they face, what they read, who influences them, and what gets them to change ordering behavior.",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "F5",
+  "module": "Buyer / User Personas",
+  "title": "Transplant teams — surveillance protocols",
+  "scope": "What motivates them, what frictions they face, what they read, who influences them, and what gets them to change ordering behavior.",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "F6",
+  "module": "Buyer / User Personas",
+  "title": "PCPs — when they order, why they don't",
+  "scope": "What motivates them, what frictions they face, what they read, who influences them, and what gets them to change ordering behavior.",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "F7",
+  "module": "Buyer / User Personas",
+  "title": "Hospital lab medical directors — operational decisions",
+  "scope": "What motivates them, what frictions they face, what they read, who influences them, and what gets them to change ordering behavior.",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "G1",
+  "module": "Capital Flows in Dx",
+  "title": "VC stage breakdown — seed/A/B/C in dx",
+  "scope": "",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "G2",
+  "module": "Capital Flows in Dx",
+  "title": "PE platform plays (lab consolidations)",
+  "scope": "",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "G3",
+  "module": "Capital Flows in Dx",
+  "title": "Strategic acquirers — Roche, Siemens, Danaher, Abbott, Thermo, BD, Hologic, Exact, Veracyte, Natera",
+  "scope": "",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "G4",
+  "module": "Capital Flows in Dx",
+  "title": "IPO and SPAC track records in dx",
+  "scope": "",
+  "why": "",
+  "questions": ""
+ },
+ {
+  "id": "G5",
+  "module": "Capital Flows in Dx",
+  "title": "Down rounds and the dx valuation reset",
+  "scope": "",
+  "why": "",
+  "questions": ""
+ }
+]

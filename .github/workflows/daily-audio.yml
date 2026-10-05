@@ -1,76 +1,131 @@
-name: Daily Audio Overviews
+name: DX Daily Audio
 
 # Runs on GitHub's servers — your computer can be OFF.
+#
+# Why six triggers: GitHub's scheduler routinely fires hours late (on this repo,
+# Jul–Sep 2026: median 3.7 h, worst 10.3 h after the cron time). So we start
+# several slots after midnight US-Central; the first one GitHub actually runs
+# builds today's episode, and every later slot sees it's done and exits in
+# seconds. All slots are before 6 AM Central in both CDT and CST, so there's no
+# daylight-saving edit to make — the "gate" step works in Central time.
 on:
   schedule:
-    # 11:03 UTC = 6:03 AM US-Central during CDT (summer). GitHub cron is UTC-only,
-    # has no timezone/DST support, and may lag 5-15 min under load.
-    # ⚠️ DST: when Central switches to CST (standard time, early Nov), 11:03 UTC
-    #    becomes 5:03 AM local — change this to "3 12 * * *" then to keep it at 6 AM.
-    - cron: "3 11 * * *"
-  workflow_dispatch: {}   # lets you trigger a manual test run from the Actions tab
+    - cron: "17 5 * * *"    # 00:17 CDT / 23:17 CST (prev day — gate skips it)
+    - cron: "17 6 * * *"
+    - cron: "17 7 * * *"
+    - cron: "17 8 * * *"
+    - cron: "17 9 * * *"
+    - cron: "17 10 * * *"   # last slot: ships a plain readout if no model is reachable
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Rebuild even if today's episode already exists"
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
-  models: read            # lets the built-in GITHUB_TOKEN call GitHub Models (free)
+  contents: write   # commit data/lessons_taught.csv — also keeps the repo "active" so
+                    # GitHub never auto-disables this schedule again (60-day rule)
+  models: read      # lets the built-in GITHUB_TOKEN call GitHub Models (free)
+
+concurrency:
+  group: dx-daily-audio
+  cancel-in-progress: false   # queue overlapping triggers; the gate dedupes them
 
 jobs:
-  audio:
+  episode:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false          # one show failing must not kill the others
-      matrix:
-        show: [dx-daily, dx-deal-sourcer, dx-public-equities]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gate — one episode per Central-time day
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          SLOT: ${{ github.event.schedule }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          git pull -q --ff-only origin main   # see lessons logged by earlier runs today
+          DATE=$(TZ=America/Chicago date +%F)
+          HOUR=$(TZ=America/Chicago date +%-H)
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "Central time: $(TZ=America/Chicago date '+%a %F %H:%M %Z')  event=$EVENT ${SLOT}"
+          ALLOW=0
+          if [ "$EVENT" = "schedule" ] && { [ "$SLOT" = "17 10 * * *" ] || [ "$HOUR" -ge 9 ]; }; then ALLOW=1; fi
+          echo "allow_template=$ALLOW" >> "$GITHUB_OUTPUT"
+          if [ "$FORCE" = "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if grep -q "^$DATE," data/lessons_taught.csv; then
+            echo "Today's episode ($DATE) is already built — nothing to do."
+            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$EVENT" = "schedule" ] && [ "$HOUR" -ge 20 ]; then
+            echo "Evening slot (CST) — waiting for after midnight."
+            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
         with:
           python-version: "3.12"
 
       - name: Install deps
+        if: steps.gate.outputs.run == 'true'
         run: pip install -r requirements.txt
 
-      - name: Set run date
-        run: echo "RUN_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
-
-      - name: Build script — live free feeds + GitHub Models synthesis
+      - name: 1-2 · Research + write the 5-7 min script (free feeds + GitHub Models)
+        if: steps.gate.outputs.run == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEXT_MODEL: openai/gpt-4o-mini
-        run: python scripts/run_show.py "${{ matrix.show }}" "script.txt"
+          RUN_DATE: ${{ steps.gate.outputs.date }}
+          ALLOW_TEMPLATE: ${{ steps.gate.outputs.allow_template }}
+        run: python scripts/build_episode.py out
 
-      - name: Generate audio (MP3, edge-tts — free, no API key)
-        run: python scripts/generate_audio.py "script.txt" "${{ matrix.show }}-${RUN_DATE}.mp3"
+      - name: 3 · Text-to-speech (edge-tts, free)
+        if: steps.gate.outputs.run == 'true'
+        run: python scripts/generate_audio.py out/script.txt "out/dx-daily-${{ steps.gate.outputs.date }}.mp3"
 
       - name: Install rclone
-        run: |
-          curl -fsSL https://rclone.org/install.sh | sudo bash
+        if: steps.gate.outputs.run == 'true'
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
 
       - name: Write rclone config
+        if: steps.gate.outputs.run == 'true'
         env:
           RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
         run: |
           mkdir -p ~/.config/rclone
           printf '%s' "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
-          # sanity: fail early with a clear message if the token JSON is broken
           rclone config show gdrive >/dev/null || { echo "rclone config is malformed"; exit 1; }
 
-      - name: Upload MP3 to Google Drive (Daily Audio)
+      - name: 5 · Save to Google Drive (Daily Audio)
+        if: steps.gate.outputs.run == 'true'
+        env:
+          D: ${{ steps.gate.outputs.date }}
         run: |
-          rclone copyto "${{ matrix.show }}-${RUN_DATE}.mp3" \
-            "gdrive:Daily Audio/${{ matrix.show }}-${RUN_DATE}.mp3" -v
+          rclone copyto "out/dx-daily-$D.mp3"  "gdrive:Daily Audio/dx-daily-$D.mp3" -v
+          rclone copyto "out/briefing.md"      "gdrive:Daily Audio/dx-daily-$D-briefing.md" -v
 
-      - name: Label the transcript
-        if: always()
-        run: cp script.txt "${{ matrix.show }}-${RUN_DATE}.txt" || true
+      - name: Log today's lesson (next run moves to the next one)
+        if: steps.gate.outputs.run == 'true'
+        env:
+          D: ${{ steps.gate.outputs.date }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull -q --ff-only origin main
+          grep -q "^$D," data/lessons_taught.csv || echo "$D,$(cat out/lesson_id.txt)" >> data/lessons_taught.csv
+          git add data/lessons_taught.csv
+          git diff --cached --quiet || git commit -q -m "Episode $D: lesson $(cat out/lesson_id.txt)"
+          git push -q origin HEAD:main
 
-      - name: Save a copy as a build artifact (audio + transcript)
-        if: always()
+      - name: Keep a copy as a build artifact (audio + briefing + script)
+        if: always() && steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.show }}-${{ env.RUN_DATE }}
-          path: |
-            ${{ matrix.show }}-*.mp3
-            ${{ matrix.show }}-*.txt
+          name: dx-daily-${{ steps.gate.outputs.date }}
+          path: out/
           if-no-files-found: ignore

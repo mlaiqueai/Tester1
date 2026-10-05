@@ -1,124 +1,82 @@
-# Daily Diagnostics Audio Overviews — Cloud (computer-off)
+# DX Daily — computer-off diagnostics audio briefing
 
-Generates **three** NotebookLM-style two-host podcast episodes every morning and
-uploads them to your Google Drive **`Daily Audio`** folder — running entirely on
-**GitHub's servers**, so your computer can be off.
+Every morning, GitHub's servers build a **5–7 minute two-host audio episode**
+(Alex + Sam) and save it to the Google Drive folder **`Daily Audio`**. Your
+computer can be off. Total cost: **$0**.
 
-Shows: `dx-daily` (full 4-pillar brief), `dx-deal-sourcer`, `dx-public-equities`.
+Each episode covers:
+1. **Public markets** — a diagnostics/lab/tools stock basket vs. the S&P,
+   Nasdaq, XBI and IHI, with the day's biggest movers.
+2. **Private markets** — venture rounds, M&A, private equity, IPOs.
+3. **Regulation, reimbursement & clinical trends** across GI, ID, heme/onc,
+   renal, neuro, transplant and therapeutics-adjacent dx.
+4. **Teach-in** — one lesson a day from the *business of diagnostics*
+   curriculum (48 lessons: reimbursement, regulatory, adoption, test economics,
+   competitive structure, personas, capital flows), working through in order and
+   restarting after a full pass.
 
-## How it works
+Drive gets two files a day: `dx-daily-YYYY-MM-DD.mp3` and
+`dx-daily-YYYY-MM-DD-briefing.md` (the written analyst brief, its sources, and
+the full transcript).
 
-For each show, once a day, a GitHub Actions job:
-1. **Gathers live facts from free, keyless feeds** — `scripts/run_show.py` pulls
-   fresh data:
-   - **Google News RSS** (`news.google.com/rss/search`) — headlines per topic.
-   - **Stooq** (`stooq.com` CSV) — index levels + day-over-day % moves (equities).
-2. **Synthesizes an analytical script with a free LLM** — the fetched data is
-   handed to **GitHub Models** (`openai/gpt-4o-mini` by default), which writes a
-   two-host (Alex + Sam) dialogue that **connects the stories and derives insight**,
-   grounded strictly in the fetched facts (no invented numbers). Authenticated
-   with the repo's built-in `GITHUB_TOKEN` — **free, no external key**. If the
-   model is ever unavailable, it falls back to a plain template so the show still
-   ships.
-3. **Generates audio** — `edge-tts` (Microsoft Edge's neural voices, **free, no
-   API key**) synthesizes each Alex/Sam turn with its own voice, then ffmpeg
-   (bundled) concatenates them into one compact `.mp3`.
-4. **Uploads to Drive** — `rclone` copies it to `Daily Audio/<show>-<date>.mp3`.
+## Pipeline
 
-> **Free, but with real synthesis.** The facts come from free live feeds; a free
-> LLM (GitHub Models, via the built-in Actions token) turns them into an
-> analytical briefing. No paid API, no billing wall. Per-show topics and audience
-> framing live in the `SHOWS` dict at the top of `scripts/run_show.py`.
+| Step | What | Where |
+|---|---|---|
+| 1. Research | Yahoo Finance prices + Google News & Bing News RSS (keyless), filtered to recent, diagnostics-relevant items | `scripts/research.py` |
+| 2. Script | GitHub Models writes an analyst brief, then a ~1,000-word dialogue from it; auto-revises if the length is off | `scripts/build_episode.py` |
+| 3. Audio | `edge-tts` (pip, free) voices each turn; ffmpeg joins them into one MP3 | `scripts/generate_audio.py` |
+| 4. Schedule | GitHub Actions, early-morning slots (below) | `.github/workflows/daily-audio.yml` |
+| 5. Save | `rclone` uploads to Drive `Daily Audio/` | workflow |
 
----
+**Models:** tries `openai/gpt-4.1`, then `gpt-4o`, then `gpt-4o-mini` through
+GitHub Models, authenticated by the workflow's built-in token (free tier,
+~8K-token input cap, which is why the research packet is size-budgeted).
+Override with the `TEXT_MODELS` env var. If no model is reachable, the run fails
+so a later slot can retry; only the last slot (or a very late run) ships a plain
+headline readout instead.
 
-## Setup — one secret
+**Lesson log:** `data/lessons_taught.csv` gets one line per episode, committed
+by the workflow. That decides tomorrow's lesson, and the daily commit keeps the
+repo "active" so GitHub doesn't auto-disable the schedule (it did on Sept 16,
+2026, after 60 days with no commits).
 
-The LLM synthesis uses **GitHub Models** with the repo's **built-in
-`GITHUB_TOKEN`** (the workflow grants it `models: read`) — no external key. Audio
-is keyless too. So the **only** secret you add is `RCLONE_CONF` for the Google
-Drive upload (**Settings → Secrets and variables → Actions → New repository
-secret**).
+## Timing
 
-> **No paid keys.** No `ANTHROPIC_API_KEY`, no `GEMINI_API_KEY`. If either is
-> still present from an earlier version, it's unused and can be deleted.
->
-> **If GitHub Models is disabled** for your org, or the built-in token is
-> refused, create a fine-grained **Personal Access Token** with the
-> **`models: read`** permission and add it as a secret named `GH_MODELS_TOKEN`
-> (the script prefers it over `GITHUB_TOKEN`). Otherwise each show falls back to
-> a plain headline-readout template.
+GitHub cron is UTC-only and often fires **hours** late. On this repo, July–Sept
+2026 ran a median of 3.7 h late, worst 10.3 h. So the workflow has six slots
+between ~00:17 and ~05:17 Central. The first one that actually runs builds the
+episode and the rest exit in seconds. Typical delivery is before 6 AM Central,
+but **GitHub doesn't guarantee it**. Daylight saving is handled automatically,
+with no edits needed in November or March.
 
-### `RCLONE_CONF` — uploads audio to your Drive
-**Important correction:** I originally suggested a *service account*, but your
-Drive is a consumer Gmail account, and service accounts **can't own files there**
-(no storage quota) — uploads would fail. The reliable path is **rclone with an
-OAuth token to your own account** (files land in your Drive, use your 15 GB). One-time:
+For exact timing, trigger the workflow from an external cron service (e.g.
+cron-job.org) via the GitHub API's `workflow_dispatch`. That needs a
+fine-grained token with *Actions: write* on this repo.
 
-1. Install rclone locally: <https://rclone.org/downloads/> (Windows: the .exe).
-2. In a terminal run `rclone config` → `n` (new remote) → name it exactly
-   **`gdrive`** → storage type **`drive`** (Google Drive).
-3. Leave `client_id`/`client_secret` blank for the quick path (or create your own
-   OAuth client for higher rate limits — see rclone's Drive docs).
-4. Scope: choose **`1` (full access)** or `drive.file`. `y` to auto-config →
-   a browser opens → sign in as **mlaique.ai@gmail.com** and allow. (If you see
-   an "unverified app" screen, click **Advanced → Go to rclone**.)
-5. `n` to "team drive", then `y` to confirm.
-6. Find the config file: run `rclone config file` → open it → copy its **entire
-   contents** (the `[gdrive]` block with the token) into a secret named
-   `RCLONE_CONF`.
+## Secrets
 
-That token lets the workflow upload as you, with no browser and no PC on.
-
----
-
-## Repo setup
-
-1. Create a **private** GitHub repo (e.g. `daily-dx-audio`).
-2. Push these files to it (from this folder):
-   ```bash
-   git init && git add . && git commit -m "Daily diagnostics audio"
-   git branch -M main
-   git remote add origin https://github.com/<you>/daily-dx-audio.git
-   git push -u origin main
-   ```
-3. Add the `RCLONE_CONF` secret above.
-4. **Actions tab → enable workflows** if prompted.
-
-## Test it before trusting the schedule
-- **Actions tab → "Daily Audio Overviews" → Run workflow** (the
-  `workflow_dispatch` button) → runs all three shows now.
-- Watch the logs. On success, check the `Daily Audio` folder in Drive.
-- Every run also saves the `.mp3` as a **downloadable Actions artifact** as a
-  fallback, even if the Drive upload step fails.
-
-## Schedule / timezone
-GitHub cron is **UTC**. The default `12 10 * * *` ≈ 6:12am US-Eastern. Edit the
-`cron:` line in `.github/workflows/daily-audio.yml` for your timezone.
-> GitHub's scheduled runs can lag 5–15 min under load, and Actions disables
-> schedules on repos with **no activity for 60 days** — a manual run or commit
-> resets that.
-
-## Cost summary
-| Item | Rough cost |
+| Secret | Used for |
 |---|---|
-| Live data (Google News RSS + Stooq) | **free** (keyless HTTP) |
-| LLM synthesis (GitHub Models) | **free** (built-in token; modest daily rate limits) |
-| edge-tts (audio) | **free** (no key, no bill) |
-| GitHub Actions | free (well under the 2,000 free min/month) |
-| Google Drive | free (your 15 GB) |
+| `RCLONE_CONF` | Drive upload (the `[gdrive]` block from `rclone config file`) |
+| `GITHUB_TOKEN` | built in; nothing to set |
 
-**The whole pipeline is $0 and needs no paid API key.**
+`ANTHROPIC_API_KEY` / `GEMINI_API_KEY` are no longer used and can be deleted.
+
+> ⚠️ The rclone config uses rclone's **shared** Google client ID, which Google is
+> retiring during 2026. When uploads start failing with auth errors, create your
+> own client ID (https://rclone.org/drive/#making-your-own-client-id),
+> re-authorize, and update `RCLONE_CONF`.
+
+## Run it now
+
+**Actions → DX Daily Audio → Run workflow.** It skips if today's episode already
+exists. Tick **force** to rebuild.
 
 ## Customize
-- **LLM:** set `TEXT_MODEL` in the workflow (default `openai/gpt-4o-mini`; e.g.
-  `openai/gpt-4o`, `meta/Llama-3.3-70B-Instruct`). Higher-tier models have lower
-  free daily limits — fine for 3 shows/day.
-- **Voices:** set `EDGE_VOICE_A` / `EDGE_VOICE_B` env in the workflow (Alex / Sam).
-  List all voices with `edge-tts --list-voices`. Defaults: `en-US-AvaNeural` /
-  `en-US-AndrewNeural`.
-- **Pace:** set `EDGE_RATE` (e.g. `+8%`) to speed up or slow down delivery.
-- **Topics / audience:** edit the `SHOWS` dict at the top of `scripts/run_show.py`
-  (news queries, indexes, and the per-show audience framing the LLM writes for);
-  `HEADLINES_PER_TOPIC` env (default 4).
-- **Add a show:** add an entry to `SHOWS` and add `<name>` to the matrix.
+
+- **Topics / companies:** `SECTIONS`, `TICKERS`, `BENCHMARKS` in `scripts/research.py`
+- **Format / length / tone:** prompts and `WORDS_MIN/WORDS_MAX` in `scripts/build_episode.py`
+  (edge-tts reads ~170 words/min, so 1,000 words ≈ 6 min)
+- **Voices / pace:** `EDGE_VOICE_A`, `EDGE_VOICE_B`, `EDGE_RATE` env vars for `generate_audio.py`
+- **Curriculum:** `data/curriculum.json` (to repeat or skip a lesson, edit `data/lessons_taught.csv`)

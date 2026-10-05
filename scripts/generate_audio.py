@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 
 SPEAKER_A, SPEAKER_B = "Alex", "Sam"
 VOICE_A = os.environ.get("EDGE_VOICE_A", "en-US-AvaNeural")      # Alex — curious host
@@ -36,6 +37,26 @@ def parse_lines(dialogue):
 async def synth_segment(text, voice, path):
     import edge_tts
     await edge_tts.Communicate(text, voice, rate=RATE).save(path)
+
+
+def synth_with_retry(text, voice, path, tries=4):
+    """edge-tts talks to an unofficial endpoint that occasionally drops a request."""
+    for attempt in range(1, tries + 1):
+        try:
+            asyncio.run(synth_segment(text, voice, path))
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                return
+        except Exception as e:  # noqa: BLE001
+            print(f"  turn retry {attempt}/{tries}: {e}", file=sys.stderr)
+        time.sleep(2 * attempt)
+    sys.exit(f"ERROR: edge-tts failed after {tries} tries ({voice}): {text[:60]}...")
+
+
+def duration_seconds(path):
+    """Read duration from ffmpeg's banner (imageio-ffmpeg ships ffmpeg, not ffprobe)."""
+    res = subprocess.run([ffmpeg_exe(), "-i", path], capture_output=True, text=True)
+    m = re.search(r"Duration: (\d+):(\d+):(\d+\.\d+)", res.stderr)
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else 0.0
 
 
 def ffmpeg_exe():
@@ -78,14 +99,14 @@ def main(script_path, out_path):
     for i, (who, text) in enumerate(segments):
         voice = VOICE_A if who == SPEAKER_A else VOICE_B
         seg = os.path.join(tmpdir, f"{i:03d}.mp3")
-        asyncio.run(synth_segment(text, voice, seg))
-        if not os.path.exists(seg) or os.path.getsize(seg) == 0:
-            sys.exit(f"ERROR: edge-tts produced no audio for turn {i} ({who}).")
+        synth_with_retry(text, voice, seg)
         seg_paths.append(seg)
 
     concat_to(out_path, seg_paths)
-    print(f"OK  {out_path}  ({os.path.getsize(out_path)/1024:.0f} KB, "
-          f"{len(segments)} turns)")
+    secs = duration_seconds(out_path)
+    words = sum(len(t.split()) for _, t in segments)
+    print(f"OK  {out_path}  ({os.path.getsize(out_path)/1024:.0f} KB, {len(segments)} turns, "
+          f"{secs/60:.1f} min, {words} words = {words / max(secs, 1) * 60:.0f} wpm)")
 
 
 if __name__ == "__main__":
