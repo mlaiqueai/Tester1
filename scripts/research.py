@@ -5,8 +5,8 @@
   News:    Google News RSS (broad, recent) + Bing News RSS (adds article snippets),
            filtered to recent items and de-duplicated across sections.
 
-The packet is plain text sized to fit the free GitHub Models input limit
-(~8K tokens per request), so the synthesis step can read all of it.
+The packet is plain text with a size budget, so the writing step gets the
+highest-signal items rather than everything the feeds return.
 Standard library only. Every source is best-effort: a dead feed shrinks the
 packet, it never crashes the run.
 

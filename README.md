@@ -25,7 +25,7 @@ the full transcript).
 | Step | What | Where |
 |---|---|---|
 | 1. Research | Yahoo Finance prices + Google News & Bing News RSS (keyless), filtered to recent, diagnostics-relevant items | `scripts/research.py` |
-| 2. Script | Gemini writes an analyst brief (plus live Google Search when the key allows), then a ~1,000-word dialogue; auto-revises if the length is off | `scripts/build_episode.py` |
+| 2. Script | Gemini writes an analyst brief (plus live Google Search when the key allows), then a ~850-word dialogue; auto-revises if the length is off | `scripts/build_episode.py` |
 | 3. Audio | `edge-tts` (pip, free) voices each turn; ffmpeg joins them into one MP3 | `scripts/generate_audio.py` |
 | 4. Schedule | GitHub Actions, early-morning slots (below) | `.github/workflows/daily-audio.yml` |
 | 5. Save | `rclone` uploads to Drive `Daily Audio/` | workflow |
@@ -85,6 +85,6 @@ exists. Tick **force** to rebuild.
 
 - **Topics / companies:** `SECTIONS`, `TICKERS`, `BENCHMARKS` in `scripts/research.py`
 - **Format / length / tone:** prompts and `WORDS_MIN/WORDS_MAX` in `scripts/build_episode.py`
-  (edge-tts reads ~170 words/min, so 1,000 words ≈ 6 min)
+  (full episodes read at ~140 words/min, so ~850 words ≈ 6 min)
 - **Voices / pace:** `EDGE_VOICE_A`, `EDGE_VOICE_B`, `EDGE_RATE` env vars for `generate_audio.py`
 - **Curriculum:** `data/curriculum.json` (to repeat or skip a lesson, edit `data/lessons_taught.csv`)

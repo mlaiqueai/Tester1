@@ -44,7 +44,8 @@ GROUNDING = os.environ.get("GROUNDING", "auto").lower() != "off"
 
 LAST_ERROR = ""
 
-WORDS_MIN, WORDS_MAX = 900, 1150   # ~5.3-6.8 min: edge-tts reads ~170 words/min
+WORDS_MIN, WORDS_MAX = 740, 920    # ~5.3-6.9 min at the ~134-141 words/min full episodes read at
+WPM = 140
 
 READER = ("Muddassir, who leads Corporate Development for the diagnostics vertical at an "
           "Academic Medical Center (AMC): its lab (DLMP) develops tests, its commercialization "
@@ -184,23 +185,26 @@ TODAY'S LESSON (from the listener's business-of-diagnostics curriculum):
 
 Write today's episode of "DX Daily" for {READER}
 
-Structure (target 950-1,050 words total, about 6-7 minutes spoken):
-1. Cold open (~60 words): the single most important takeaway today.
-2. Public markets (~170): what moved and why, with the numbers.
-3. Private markets (~190): rounds, M&A, private equity, IPOs — and what they signal.
-4. Regulation, reimbursement and clinical trends (~170).
-5. Teach-in (~300): Alex says "Today's lesson: {lesson['title']}." Sam teaches it from first
+Structure (target 820-880 words total, about 6 minutes spoken):
+1. Cold open (~50 words): the single most important takeaway today.
+2. Public markets (~130): what moved and why — the few moves that matter, not a price list.
+3. Private markets (~170): rounds, M&A, private equity, IPOs — and what they signal.
+4. Regulation, reimbursement and clinical trends (~150).
+5. Teach-in (~270): Alex says "Today's lesson: {lesson['title']}." Sam teaches it from first
    principles — what it is, how it works mechanically, who orders/pays/benefits, one concrete
    example, a common misconception, and what it means for the AMC. Use the lesson's questions as
    a guide and tie it to today's news if it fits naturally. Define the lesson's key terms the
    first time they appear. This segment draws on general industry knowledge, so stay accurate:
    if you're unsure of a specific figure or date, explain the mechanism instead of guessing.
-6. Watch list and sign-off (~80).
+6. Watch list and sign-off (~60).
 
 Rules:
 - News facts come ONLY from the brief. Never invent companies, deals, numbers, or dates.
-- Write for the ear: spell numbers the way they're spoken ("nine million dollars",
-  "up eight percent"); no symbols, URLs, tables, headings, or markdown.
+- Don't state regulatory or reimbursement status from memory (e.g. whether an FDA LDT rule is
+  in force) — only what the brief supports. Rules change; stale claims mislead.
+- Write for the ear: talk in percent moves and round numbers ("up about eight percent",
+  "nine million dollars"); never read share prices to the cent. No symbols, URLs, tables,
+  headings, or markdown. Use natural contractions (let's, it's, don't).
 - Natural back-and-forth with short turns (1-4 sentences). Lead with insight, not headlines.
 - Every line starts with "Alex:" or "Sam:". Output only the dialogue."""
 
@@ -280,10 +284,10 @@ def main(out_dir):
             print(f"  revising ({fix})...")
             revised, used2, _, _ = generate(SYS_WRITER, turns + [
                 ("model", draft),
-                ("user", f"That's {words} words, {fix}. Rewrite the full episode at 950-1,050 "
+                ("user", f"That's {words} words, {fix}. Rewrite the full episode at 820-880 "
                          "words. Same structure and rules; output only the dialogue.")], key)
             rlines = parse_dialogue(revised)
-            if len(rlines) >= 8 and abs(word_count(rlines) - 1000) < abs(words - 1000):
+            if len(rlines) >= 8 and abs(word_count(rlines) - 850) < abs(words - 850):
                 lines, used = rlines, used2
                 print(f"  revision kept: {word_count(lines)} words")
         if len(lines) < 8:
@@ -304,7 +308,7 @@ def main(out_dir):
         f"# DX Daily — {run_date}\n\n"
         f"**Lesson {lesson['id']}:** {lesson['title']} ({lesson['module']})  \n"
         f"**Written by:** {used} · {n_news} feed items · live Google Search: "
-        f"{'yes' if searched else 'no'} · {word_count(lines)} words (~{word_count(lines) / 170:.1f} min)\n\n"
+        f"{'yes' if searched else 'no'} · {word_count(lines)} words (~{word_count(lines) / WPM:.1f} min)\n\n"
         f"{brief or '_Analyst brief unavailable (template run)._'}\n\n"
         + (f"## Web sources consulted\n\n{web}\n" if web else "")
         + "## Transcript\n\n" + script.replace("\n", "\n\n"))
@@ -313,7 +317,7 @@ def main(out_dir):
     print(f"----- END ({len(lines)} turns, {word_count(lines)} words, written by {used}) -----")
     annotate("warning" if used == "template" else "notice",
              f"Lesson {lesson['id']} · {n_news} feed items · live search: {'yes' if searched else 'no'} · "
-             f"{word_count(lines)} words (~{word_count(lines) / 170:.1f} min) · written by {used}")
+             f"{word_count(lines)} words (~{word_count(lines) / WPM:.1f} min) · written by {used}")
 
 
 def annotate(level, msg):
