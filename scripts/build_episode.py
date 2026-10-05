@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Build today's DX Daily episode — all free:
+"""Build today's DX Daily episode:
 
-  1. research    scripts/research.py: market prices + recent news (keyless feeds)
+  1. research    scripts/research.py: market prices + recent news (free, keyless feeds)
   2. lesson      next lesson from data/curriculum.json not yet taught this cycle
                  (log: data/lessons_taught.csv — the workflow appends to it)
-  3. brief       GitHub Models: analyst notes — what matters and why, with sources
-  4. script      GitHub Models: Alex/Sam dialogue, ~1,000 words (6-7 min), incl. a teach-in
+  3. brief       Gemini: analyst notes — what matters and why, with sources. Uses live
+                 Google Search when the key's tier allows it (paid/prepaid projects get
+                 5,000 free searches/month); otherwise works from the feeds alone.
+  4. script      Gemini: Alex/Sam dialogue, ~1,000 words (6-7 min), incl. a teach-in
 
 Writes to <out_dir>: script.txt, briefing.md, lesson_id.txt
 
 Usage:  python build_episode.py <out_dir>
-Env:    GITHUB_TOKEN        token with `models: read` (the workflow's built-in token works)
-        TEXT_MODELS         comma-separated GitHub Models ids, tried in order
+Env:    GEMINI_API_KEY      Google AI Studio key
+        GEMINI_MODELS       comma-separated model ids, tried in order
+        GROUNDING           auto (default) | off
         RUN_DATE            YYYY-MM-DD (Central date; default today)
-        ALLOW_TEMPLATE=1    if no model works, ship a plain readout instead of failing
+        ALLOW_TEMPLATE=1    if Gemini is unusable, ship a plain readout instead of failing
 """
 import csv
 import datetime as dt
@@ -32,9 +35,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CURRICULUM = os.path.join(ROOT, "data", "curriculum.json")
 LESSON_LOG = os.path.join(ROOT, "data", "lessons_taught.csv")
 
-ENDPOINT = os.environ.get("MODELS_ENDPOINT", "https://models.github.ai/inference/chat/completions")
+API = "https://generativelanguage.googleapis.com/v1beta/models"
 MODELS = [m.strip() for m in os.environ.get(
-    "TEXT_MODELS", "openai/gpt-4.1,openai/gpt-4o,openai/gpt-4o-mini").split(",") if m.strip()]
+    "GEMINI_MODELS",
+    "gemini-flash-latest,gemini-3.8-flash,gemini-3.7-flash,gemini-3.5-flash,gemini-flash-lite-latest",
+).split(",") if m.strip()]
+GROUNDING = os.environ.get("GROUNDING", "auto").lower() != "off"
 
 LAST_ERROR = ""
 
@@ -67,37 +73,59 @@ def lesson_text(lesson):
     return "\n".join(lines)
 
 
-# ------------------------------ GitHub Models ------------------------------
+# ------------------------------ Gemini ------------------------------
 class ModelError(Exception):
     pass
 
 
-def chat(messages, token, max_tokens):
-    """Try each model in MODELS; return (text, model). Raises ModelError if all fail."""
+class Fatal(ModelError):
+    """Key/billing problem: no other model will do better."""
+
+
+def _post(model, body, key):
+    req = urllib.request.Request(f"{API}/{model}:generateContent", data=json.dumps(body).encode(),
+                                 method="POST", headers={"Content-Type": "application/json",
+                                                         "x-goog-api-key": key})
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        return json.loads(resp.read())
+
+
+def generate(system, turns, key, search=False, max_tokens=16384):
+    """turns: [(role, text)] with role 'user'/'model'. Returns (text, model, sources, searched)."""
+    body = {"systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": r, "parts": [{"text": t}]} for r, t in turns],
+            "generationConfig": {"temperature": 0.6, "maxOutputTokens": max_tokens}}
     errors = []
     for model in MODELS:
-        payload = json.dumps({"model": model, "messages": messages,
-                              "temperature": 0.5, "max_tokens": max_tokens}).encode()
+        use_search = search
         for attempt in range(3):
-            req = urllib.request.Request(ENDPOINT, data=payload, method="POST", headers={
-                "Content-Type": "application/json", "Accept": "application/json",
-                "Authorization": f"Bearer {token}", "X-GitHub-Api-Version": "2022-11-28"})
+            b = dict(body, tools=[{"google_search": {}}]) if use_search else body
             try:
-                with urllib.request.urlopen(req, timeout=180) as resp:
-                    body = json.loads(resp.read())
-                text = body["choices"][0]["message"]["content"] or ""
-                if text.strip():
-                    return text, model
-                errors.append(f"{model}: empty reply")
-                break
+                r = _post(model, b, key)
+                cand = (r.get("candidates") or [{}])[0]
+                parts = cand.get("content", {}).get("parts", [])
+                text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+                if not text.strip():
+                    errors.append(f"{model}: empty reply ({cand.get('finishReason')})")
+                    break
+                g = cand.get("groundingMetadata") or {}
+                sources = [(c["web"].get("title", ""), c["web"].get("uri", ""))
+                           for c in g.get("groundingChunks", []) if c.get("web")]
+                return text, model, sources, bool(g.get("webSearchQueries"))
             except urllib.error.HTTPError as e:
-                detail = e.read().decode("utf-8", "replace")[:300]
-                errors.append(f"{model}: HTTP {e.code} {detail}")
-                if e.code in (429, 500, 502, 503, 504) and attempt < 2:
-                    time.sleep(10 * (attempt + 1))
+                detail = e.read().decode("utf-8", "replace")
+                msg = (re.search(r'"message":\s*"([^"]+)', detail) or [None, detail[:200]])[1]
+                errors.append(f"{model}{' +search' if use_search else ''}: HTTP {e.code} {msg}")
+                if e.code == 402 or (e.code == 403 and "API key" in detail):
+                    raise Fatal(errors[-1])           # depleted prepaid credits / bad key
+                if use_search and e.code in (400, 429):
+                    use_search = False                # tier doesn't allow search: go without
                     continue
-                break                      # 4xx (unknown model, too large, no access): next model
-            except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError) as e:
+                if e.code in (429, 500, 503) and attempt < 2:
+                    time.sleep(20 * (attempt + 1))
+                    continue
+                break                                 # 404 retired model, etc.: next model
+            except (urllib.error.URLError, TimeoutError, ValueError, KeyError) as e:
                 errors.append(f"{model}: {e}")
                 if attempt < 2:
                     time.sleep(5)
@@ -114,20 +142,27 @@ SYS_WRITER = ("You are the writers' room for a smart daily audio briefing with t
               "a diagnostics analyst and gifted teacher.")
 
 
-def brief_prompt(packet, run_date):
+def brief_prompt(packet, run_date, search):
+    source_rule = (
+        "- Use Google Search to verify the most important items and to find significant "
+        "diagnostics news from the past 3 days that the packet missed — especially venture rounds, "
+        "M&A, private equity, IPOs, FDA/CMS decisions, and earnings. Get the specifics (amounts, "
+        "investors, terms, dates). Never invent anything you couldn't find."
+        if search else
+        "- Use ONLY facts in the research packet. Never invent companies, deals, amounts, or dates.")
     return f"""{packet}
 
 Write today's analyst brief ({run_date}) for {READER}
 
 Rules:
-- Use ONLY facts in the research packet. Never invent companies, deals, amounts, or dates.
+{source_rule}
 - Skip items that aren't about the diagnostics, lab, or life-science-tools business.
 - For each point: the fact, then the "so what" for the AMC — does it touch what DLMP develops,
   what AMC-MCS could distribute, or what the innovation engine should incubate?
-- In public markets, use the MARKET DATA numbers and connect moves to the news when the packet supports it.
+- In public markets, use the MARKET DATA numbers and connect moves to the news where supported.
 - If a section has nothing meaningful, write "Quiet today."
 
-Format (markdown, about 450-650 words before Sources):
+Format (markdown, about 500-750 words before Sources):
 ## Top takeaways
 (3 bullets, most decision-relevant first)
 ## Public markets
@@ -135,7 +170,7 @@ Format (markdown, about 450-650 words before Sources):
 ## Regulation & reimbursement
 ## Clinical & market trends
 ## Watch list
-(2-3 items, with dates when the packet gives them)
+(2-3 items, with dates when known)
 ## Sources
 (one line per item you used: headline — outlet, date)"""
 
@@ -210,29 +245,32 @@ def template_script(packet, lesson, run_date):
 
 # ------------------------------ main ------------------------------
 def main(out_dir):
+    global LAST_ERROR
     os.makedirs(out_dir, exist_ok=True)
     day = dt.date.fromisoformat(os.environ.get("RUN_DATE") or dt.date.today().isoformat())
     run_date = f"{day:%A, %B} {day.day}, {day.year}"
-    token = (os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
 
     packet, n_news = research.build_packet(run_date)
     lesson = pick_lesson()
     print(f"Lesson: {lesson['id']} — {lesson['title']}")
 
-    brief, used = "", "template"
+    brief, used, sources, searched = "", "template", [], False
     try:
-        if not token:
-            raise ModelError("no GITHUB_TOKEN")
-        print("Stage 1: analyst brief...")
-        brief, used = chat([{"role": "system", "content": SYS_ANALYST},
-                            {"role": "user", "content": brief_prompt(packet, run_date)}],
-                           token, max_tokens=2000)
-        print(f"  brief by {used}: {len(brief.split())} words")
+        if not key:
+            raise Fatal("no GEMINI_API_KEY")
+        print("Stage 1: analyst brief" + (" (with Google Search if allowed)..." if GROUNDING else "..."))
+        brief, used, sources, searched = generate(
+            SYS_ANALYST, [("user", brief_prompt(packet, run_date, GROUNDING))], key, search=GROUNDING)
+        if GROUNDING and not searched:   # search unavailable: make sure the brief stayed on the packet
+            brief, used, _, _ = generate(
+                SYS_ANALYST, [("user", brief_prompt(packet, run_date, False))], key)
+        print(f"  brief by {used}: {len(brief.split())} words, live search: "
+              f"{'yes, ' + str(len(sources)) + ' sources' if searched else 'no'}")
 
         print("Stage 2: episode script...")
-        sprompt = script_prompt(brief, lesson, run_date)
-        msgs = [{"role": "system", "content": SYS_WRITER}, {"role": "user", "content": sprompt}]
-        draft, used = chat(msgs, token, max_tokens=3000)
+        turns = [("user", script_prompt(brief, lesson, run_date))]
+        draft, used, _, _ = generate(SYS_WRITER, turns, key)
         lines = parse_dialogue(draft)
         words = word_count(lines)
         print(f"  script by {used}: {len(lines)} turns, {words} words")
@@ -240,11 +278,10 @@ def main(out_dir):
             fix = ("too short — deepen the teach-in and the private-markets analysis"
                    if words < WORDS_MIN else "too long — tighten every segment")
             print(f"  revising ({fix})...")
-            revised, used2 = chat(msgs + [
-                {"role": "assistant", "content": draft},
-                {"role": "user", "content": f"That's {words} words, {fix}. Rewrite the full episode "
-                                            "at 950-1,050 words. Same structure and rules; output only the dialogue."}],
-                token, max_tokens=3000)
+            revised, used2, _, _ = generate(SYS_WRITER, turns + [
+                ("model", draft),
+                ("user", f"That's {words} words, {fix}. Rewrite the full episode at 950-1,050 "
+                         "words. Same structure and rules; output only the dialogue.")], key)
             rlines = parse_dialogue(revised)
             if len(rlines) >= 8 and abs(word_count(rlines) - 1000) < abs(words - 1000):
                 lines, used = rlines, used2
@@ -252,30 +289,31 @@ def main(out_dir):
         if len(lines) < 8:
             raise ModelError(f"unusable script ({len(lines)} dialogue lines)")
     except ModelError as e:
-        global LAST_ERROR
-        LAST_ERROR = f"synthesis failed — {e}"
+        LAST_ERROR = f"Gemini unavailable — {e}"
         print(f"Synthesis failed: {e}", file=sys.stderr)
         if os.environ.get("ALLOW_TEMPLATE") != "1":
-            sys.exit(1)               # let the next scheduled slot retry with a model
+            sys.exit(1)               # let the next scheduled slot retry
         print("ALLOW_TEMPLATE=1 — shipping the plain readout.")
-        lines, used = template_script(packet, lesson, run_date), "template"
+        lines, used, searched = template_script(packet, lesson, run_date), "template", False
 
     script = "\n".join(f"{who}: {said}" for who, said in lines) + "\n"
+    web = "".join(f"- [{t or u}]({u})\n" for t, u in dict.fromkeys(sources)) if sources else ""
     open(os.path.join(out_dir, "script.txt"), "w", encoding="utf-8").write(script)
     open(os.path.join(out_dir, "lesson_id.txt"), "w", encoding="utf-8").write(lesson["id"])
     open(os.path.join(out_dir, "briefing.md"), "w", encoding="utf-8").write(
         f"# DX Daily — {run_date}\n\n"
         f"**Lesson {lesson['id']}:** {lesson['title']} ({lesson['module']})  \n"
-        f"**Written by:** {used} · {n_news} news items researched · "
-        f"{word_count(lines)} words (~{word_count(lines) / 170:.1f} min)\n\n"
+        f"**Written by:** {used} · {n_news} feed items · live Google Search: "
+        f"{'yes' if searched else 'no'} · {word_count(lines)} words (~{word_count(lines) / 170:.1f} min)\n\n"
         f"{brief or '_Analyst brief unavailable (template run)._'}\n\n"
-        f"## Transcript\n\n" + script.replace("\n", "\n\n"))
+        + (f"## Web sources consulted\n\n{web}\n" if web else "")
+        + "## Transcript\n\n" + script.replace("\n", "\n\n"))
     print("----- TRANSCRIPT -----")
     print(script, end="")
     print(f"----- END ({len(lines)} turns, {word_count(lines)} words, written by {used}) -----")
     annotate("warning" if used == "template" else "notice",
-             f"Lesson {lesson['id']} · {n_news} news items · {word_count(lines)} words "
-             f"(~{word_count(lines) / 170:.1f} min) · written by {used}")
+             f"Lesson {lesson['id']} · {n_news} feed items · live search: {'yes' if searched else 'no'} · "
+             f"{word_count(lines)} words (~{word_count(lines) / 170:.1f} min) · written by {used}")
 
 
 def annotate(level, msg):

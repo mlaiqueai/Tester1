@@ -2,7 +2,8 @@
 
 Every morning, GitHub's servers build a **5–7 minute two-host audio episode**
 (Alex + Sam) and save it to the Google Drive folder **`Daily Audio`**. Your
-computer can be off. Total cost: **$0**.
+computer can be off. Cost: **$0** on Gemini's free tier, or about **$2/month** if
+the Gemini project has prepaid credit (which also unlocks live Google Search).
 
 Each episode covers:
 1. **Public markets** — a diagnostics/lab/tools stock basket vs. the S&P,
@@ -24,17 +25,22 @@ the full transcript).
 | Step | What | Where |
 |---|---|---|
 | 1. Research | Yahoo Finance prices + Google News & Bing News RSS (keyless), filtered to recent, diagnostics-relevant items | `scripts/research.py` |
-| 2. Script | GitHub Models writes an analyst brief, then a ~1,000-word dialogue from it; auto-revises if the length is off | `scripts/build_episode.py` |
+| 2. Script | Gemini writes an analyst brief (plus live Google Search when the key allows), then a ~1,000-word dialogue; auto-revises if the length is off | `scripts/build_episode.py` |
 | 3. Audio | `edge-tts` (pip, free) voices each turn; ffmpeg joins them into one MP3 | `scripts/generate_audio.py` |
 | 4. Schedule | GitHub Actions, early-morning slots (below) | `.github/workflows/daily-audio.yml` |
 | 5. Save | `rclone` uploads to Drive `Daily Audio/` | workflow |
 
-**Models:** tries `openai/gpt-4.1`, then `gpt-4o`, then `gpt-4o-mini` through
-GitHub Models, authenticated by the workflow's built-in token (free tier,
-~8K-token input cap, which is why the research packet is size-budgeted).
-Override with the `TEXT_MODELS` env var. If no model is reachable, the run fails
-so a later slot can retry; only the last slot (or a very late run) ships a plain
-headline readout instead.
+**Models:** Gemini via Google AI Studio (`GEMINI_API_KEY`), trying
+`gemini-flash-latest`, then 3.8, 3.7 and 3.5 Flash, then Flash-Lite (override with
+`GEMINI_MODELS`). The brief first tries Gemini's Google Search tool. A project with
+prepaid credit gets 5,000 free searches a month. A free project can't search, so
+the brief falls back to the news feeds automatically. Rough paid cost: ~$0.07/day.
+A project with **depleted prepaid credit is blocked entirely, including free use**.
+Either top it up, or use a key from a separate project with no billing.
+
+If Gemini is unreachable, the run fails so a later slot can retry. Only the last
+slot (or a very late run) ships a plain headline readout. The reason shows on the
+run's summary page.
 
 **Lesson log:** `data/lessons_taught.csv` gets one line per episode, committed
 by the workflow. That decides tomorrow's lesson, and the daily commit keeps the
@@ -59,9 +65,11 @@ fine-grained token with *Actions: write* on this repo.
 | Secret | Used for |
 |---|---|
 | `RCLONE_CONF` | Drive upload (the `[gdrive]` block from `rclone config file`) |
-| `GITHUB_TOKEN` | built in; nothing to set |
+| `GEMINI_API_KEY` | research + writing (Google AI Studio key) |
 
-`ANTHROPIC_API_KEY` / `GEMINI_API_KEY` are no longer used and can be deleted.
+`ANTHROPIC_API_KEY` is no longer used and can be deleted.
+
+History: GitHub Models (used Jul 18–30, 2026) was retired by GitHub on July 30, 2026.
 
 > ⚠️ The rclone config uses rclone's **shared** Google client ID, which Google is
 > retiring during 2026. When uploads start failing with auth errors, create your

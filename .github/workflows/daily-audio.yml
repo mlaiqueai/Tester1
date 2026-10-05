@@ -15,7 +15,7 @@ on:
     - cron: "17 7 * * *"
     - cron: "17 8 * * *"
     - cron: "17 9 * * *"
-    - cron: "17 10 * * *"   # last slot: ships a plain readout if no model is reachable
+    - cron: "17 10 * * *"   # last slot: ships a plain readout if Gemini is unreachable
   push:                     # a code change test-runs the pipeline (builds only if today's
     branches: [main]        # episode doesn't exist yet; the bot's log commits never trigger it)
     paths: ["scripts/**", ".github/workflows/**", "data/curriculum.json", "requirements.txt"]
@@ -29,7 +29,6 @@ on:
 permissions:
   contents: write   # commit data/lessons_taught.csv — also keeps the repo "active" so
                     # GitHub never auto-disables this schedule again (60-day rule)
-  models: read      # lets the built-in GITHUB_TOKEN call GitHub Models (free)
 
 concurrency:
   group: dx-daily-audio
@@ -79,10 +78,10 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: pip install -r requirements.txt
 
-      - name: 1-2 · Research + write the 5-7 min script (free feeds + GitHub Models)
+      - name: 1-2 · Research + write the 5-7 min script (free feeds + Gemini)
         if: steps.gate.outputs.run == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           RUN_DATE: ${{ steps.gate.outputs.date }}
           ALLOW_TEMPLATE: ${{ steps.gate.outputs.allow_template }}
         run: python scripts/build_episode.py out
