@@ -36,6 +36,8 @@ ENDPOINT = os.environ.get("MODELS_ENDPOINT", "https://models.github.ai/inference
 MODELS = [m.strip() for m in os.environ.get(
     "TEXT_MODELS", "openai/gpt-4.1,openai/gpt-4o,openai/gpt-4o-mini").split(",") if m.strip()]
 
+LAST_ERROR = ""
+
 WORDS_MIN, WORDS_MAX = 900, 1150   # ~5.3-6.8 min: edge-tts reads ~170 words/min
 
 READER = ("Muddassir, who leads Corporate Development for the diagnostics vertical at an "
@@ -250,6 +252,8 @@ def main(out_dir):
         if len(lines) < 8:
             raise ModelError(f"unusable script ({len(lines)} dialogue lines)")
     except ModelError as e:
+        global LAST_ERROR
+        LAST_ERROR = f"synthesis failed — {e}"
         print(f"Synthesis failed: {e}", file=sys.stderr)
         if os.environ.get("ALLOW_TEMPLATE") != "1":
             sys.exit(1)               # let the next scheduled slot retry with a model
@@ -269,9 +273,28 @@ def main(out_dir):
     print("----- TRANSCRIPT -----")
     print(script, end="")
     print(f"----- END ({len(lines)} turns, {word_count(lines)} words, written by {used}) -----")
+    annotate("warning" if used == "template" else "notice",
+             f"Lesson {lesson['id']} · {n_news} news items · {word_count(lines)} words "
+             f"(~{word_count(lines) / 170:.1f} min) · written by {used}")
+
+
+def annotate(level, msg):
+    """Surface a message on the Actions run summary (readable without opening logs)."""
+    if os.environ.get("GITHUB_ACTIONS"):
+        msg = str(msg)[:1800].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+        print(f"::{level} title=DX Daily::{msg}", flush=True)
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.exit("Usage: python build_episode.py <out_dir>")
-    main(sys.argv[1])
+    try:
+        main(sys.argv[1])
+    except SystemExit as e:
+        if e.code not in (0, None):
+            annotate("error", f"Episode not built: {LAST_ERROR or e.code}")
+        raise
+    except Exception:  # noqa: BLE001
+        import traceback
+        annotate("error", "Crashed:\n" + traceback.format_exc()[-1500:])
+        raise

@@ -16,6 +16,9 @@ on:
     - cron: "17 8 * * *"
     - cron: "17 9 * * *"
     - cron: "17 10 * * *"   # last slot: ships a plain readout if no model is reachable
+  push:                     # a code change test-runs the pipeline (builds only if today's
+    branches: [main]        # episode doesn't exist yet; the bot's log commits never trigger it)
+    paths: ["scripts/**", ".github/workflows/**", "data/curriculum.json", "requirements.txt"]
   workflow_dispatch:
     inputs:
       force:
