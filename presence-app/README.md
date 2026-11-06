@@ -5,12 +5,12 @@ https://claude.ai/artifact/WvTRtqUsXUFbrRRjoF8RkQ
 
 - **Practice:** scenario reps (IC, LP, board, interviews, pushback), impromptu questions, and
   60-second teach-backs of the DX Daily curriculum (`data/curriculum.json`).
-- **Scoring:** clarity, concision, confidence, delivery and executive impact from the transcript
-  (fillers, hedges, answer-first, numbers, sentence length) and, for uploaded recordings, the audio
-  (pauses, pitch range, rising endings, trailing off).
-- **AI coach (Claude):** per-rep feedback and rewrites, live sparring with 7 personas, evaluation
-  import (maps feedback to 23 skills and a 4-week plan), meeting prep, rewriting, visual check,
-  weekly review.
+- **Measurement:** the transcript (fillers, hedges, conclusion first, numbers, sentence length,
+  implication, next action) and, for uploaded recordings, the audio (pauses, pitch range, rising
+  endings, trailing off).
+- **AI coach (Claude):** per-rep feedback, two-sentence summaries and executive rewrites, live
+  sparring with 8 personas, meeting prep, rewriting, visual check, weekly review, and plan updates
+  from a new assessment.
 - **Development plan:** every score is on the plan's eight dimensions (strategic framing, clarity,
   conciseness, assertiveness, executive confidence, decision leadership, stakeholder management,
   commercial judgment) on a 1–10 scale against baseline and target, and every rep is checked for
