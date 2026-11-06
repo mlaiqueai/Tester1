@@ -1,0 +1,15 @@
+<div id="app">
+  <header class="topbar">
+    <div class="wrap">
+      <button class="brand" data-act="go" data-to="today" aria-label="Green Room, today"><span id="brandMark" style="display:inline-flex;width:26px;height:26px"></span><span>Green Room</span></button>
+      <nav class="tabs-top" id="tabsTop" aria-label="Main"></nav>
+      <span class="spacer"></span>
+      <button class="chip-streak" id="streakChip" data-act="go" data-to="progress" aria-label="Streak"></button>
+      <button class="avatar" id="avatarBtn" data-act="go" data-to="me" aria-label="Your profile and settings">M</button>
+    </div>
+  </header>
+  <main id="view" class="wrap"><div class="page"><div class="hero"><div class="greet">Green Room</div><p class="sub">Loading your practice…</p></div></div></main>
+  <nav class="tabbar" aria-label="Main"><div class="inner" id="tabsBottom"></div></nav>
+  <div id="sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-label="Practice"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
