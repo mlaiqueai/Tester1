@@ -1,5 +1,6 @@
 /* ============================================================
    Green Room — AI coach (Claude via the artifact's sample capability)
+   Every prompt is built around the person's development plan.
    ============================================================ */
 const AI = (() => {
   let fn = null;
@@ -10,18 +11,12 @@ const AI = (() => {
   const PERMANENT = ['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'];
 
   async function init() {
-    try {
-      if (window.claude && typeof window.claude.use === 'function') fn = await window.claude.use('sample');
-    } catch (e) { fn = null; }
+    try { if (window.claude && typeof window.claude.use === 'function') fn = await window.claude.use('sample'); } catch (e) { fn = null; }
     state = fn ? 'ready' : 'off';
     if (fn) { try { const lim = await fn.limits(); imagesOk = !!(lim && lim.images); } catch (e) { imagesOk = false; } }
     emit();
   }
-
-  function fail(e) {
-    if (e && PERMANENT.includes(e.code)) { state = 'off'; emit(); }
-    throw e;
-  }
+  function fail(e) { if (e && PERMANENT.includes(e.code)) { state = 'off'; emit(); } throw e; }
   async function json(prompt, opts = {}) {
     if (!fn) throw { code: 'unavailable', message: 'Claude is not available here.' };
     try { return await fn.json(prompt, opts); } catch (e) { return fail(e); }
@@ -34,7 +29,7 @@ const AI = (() => {
     const c = e && e.code;
     if (c === 'cancelled') return '';
     if (c === 'not_granted') return 'The coach needs permission to use Claude. You can allow it from this page\'s Permissions menu.';
-    if (c === 'sampling_disabled' || c === 'unavailable' || c === 'not_declared' || c === 'capability_disabled' || c === 'capability_removed') return 'The AI coach isn\'t available in this view. Your scores and notes still work.';
+    if (['sampling_disabled', 'unavailable', 'not_declared', 'capability_disabled', 'capability_removed'].includes(c)) return 'The AI coach isn\'t available in this view. Your scores still work.';
     if (c === 'rate_limited') return 'You\'ve hit a usage limit for now. Try again in a little while.';
     if (c === 'session_expired') return 'Your Claude session expired. Sign in again, then retry.';
     if (c === 'invalid_json') return 'The coach\'s answer came back garbled. Tap retry.';
@@ -44,26 +39,35 @@ const AI = (() => {
     return 'The coach didn\'t answer. Check your connection and retry.';
   }
 
-  /* ---------------- Prompt building blocks ---------------- */
+  /* ---------------- The plan, as context ---------------- */
+  const f1 = (v) => (v == null ? '?' : Number(v).toFixed(1).replace(/\.0$/, ''));
+  function planOf(p) { return Object.assign({}, C.DEFAULT_PLAN, p.plan || {}); }
   function who(p) {
-    const focus = (p.focus || []).map((id) => C.skill(id)).filter(Boolean)
-      .map((s) => `- ${s.name}${p.ratings && p.ratings[s.id] ? ` (self-rated ${p.ratings[s.id]}/5)` : ''}: ${s.good}`).join('\n');
-    let ev = '';
-    if (p.evaluation && p.evaluation.summary) {
-      ev = `\nFrom their executive presence evaluation: ${p.evaluation.summary}`;
-      if (p.evaluation.areas && p.evaluation.areas.length) ev += '\nDevelopment areas named in it: ' + p.evaluation.areas.map((a) => `${(C.skill(a.skill) || {}).name || a.skill}${a.evidence ? ` ("${a.evidence}")` : ''}`).join('; ');
-    }
+    const pl = planOf(p);
+    const dims = C.DIMENSIONS.map((d) => `- ${d.name}: baseline ${f1(pl.baseline[d.id])}, target ${f1(pl.target[d.id])}`).join('\n');
+    const areas = C.AREAS.map((a) => {
+      const t = (pl.tendencies && pl.tendencies[a.id]) || [];
+      return `${a.id}. ${a.title}${a.id === p.objective ? ' (THIS WEEK\'S OBJECTIVE)' : ''}\n   Current tendency: ${t.length ? t.join('; ') : 'not specified'}\n   Desired behavior: ${a.desired.join('; ')}`;
+    }).join('\n');
+    const str = (pl.strengths || []).map((s) => `- ${s.title}: ${(s.points || []).join('; ')}`).join('\n');
     return `ABOUT THE PERSON YOU COACH
-Name: ${p.name || 'the client'}. Role: ${p.role || 'senior leader'}.
-Usual audiences: ${p.audiences || 'senior executives'}.
-Their goal: ${p.goal || 'stronger executive presence'}.
-Current development focus:
-${focus || '- General executive presence'}${ev}`;
+${p.name || 'The client'}${p.role ? ', ' + p.role : ''}. Usual audiences: ${p.audiences || 'senior executives'}.
+North Star: ${pl.north}
+${pl.goal}
+Overall executive presence: baseline ${f1(pl.overall.baseline)}/10, target ${f1(pl.overall.target)}/10.
+Dimensions (1-10):
+${dims}
+${str ? 'Established strengths:\n' + str + '\n' : ''}Development areas:
+${areas}
+Their communication framework: HEADLINE (central point) → STRUCTURE (two or three supporting arguments) → IMPLICATION (why it matters) → ACTION (what happens next). Rules: three points maximum; two-sentence executive summary; one clear recommendation; one explicit next action.
+Executive language they are building: "My recommendation is…", "The fundamental issue is…", "There are two considerations here.", "The strategic implication is…", "I would distinguish between…", "The decision we need to make is…", "I would prioritize…", "The risk I would focus on is…". Language they are dropping: "I think maybe we should consider…", "One thing I was thinking about…", "I'm not sure if this makes sense…".
+The path: Stage 1 Strong Analyst → Stage 2 Strategic Business Leader → Stage 3 Executive. The goal is Stage 3.
+The standard is not how intelligent they sound. It is whether people leave with greater clarity, confidence in the direction, and an understanding of what needs to happen.`;
   }
 
-  const COACH_VOICE = `You are an elite executive-presence and speech coach who has prepared CEOs for boards, investor days and hostile Q&A. You are direct, specific and warm. You quote the person's exact words when you point out an issue, and you always show the better version. One high-leverage fix beats five small ones. No filler, no generic advice, no praise that isn't earned.`;
-
-  const SCALE = `Score calibration (0-100): 90+ would impress a Fortune 500 board; 80 is a strong VP; 70 is a solid senior manager; 60 is competent but forgettable; below 50 undermines credibility.`;
+  const COACH_VOICE = `You are an elite executive-presence coach who has prepared CEOs for boards, investor days and hostile Q&A. Be direct, specific and warm. Quote their exact words when you point out an issue and always show the executive version. One high-leverage fix beats five small ones. Don't try to change their personality; sharpen how their thinking comes across. No filler, no generic advice, no unearned praise.`;
+  const SCALE = `Scores are 1-10 with one decimal, calibrated to their plan: 7.0 is their current baseline (a strong analyst: rigorous, but builds to the point and hedges); 8.5 is their target (sounds like an executive); 9+ is C-suite or board level; 5 or below undermines credibility.`;
+  const DIM_IDS = C.DIMENSIONS.map((d) => `"${d.id}"`).join(', ');
 
   function metricsBlock(m) {
     if (!m) return 'No measurements.';
@@ -71,30 +75,25 @@ ${focus || '- General executive presence'}${ev}`;
     L.push(`Words: ${m.words}${m.durationSec ? `; duration ${Math.round(m.durationSec)}s` : ''}${m.wpm ? `; pace ${m.wpm} wpm` : ''}`);
     L.push(`Fillers: ${m.fillers}${m.fillerTypes && m.fillerTypes.length ? ' (' + m.fillerTypes.map((x) => `${x.label} ×${x.n}`).join(', ') + ')' : ''}`);
     L.push(`Hedges: ${m.hedges}${m.hedgeTypes && m.hedgeTypes.length ? ' (' + m.hedgeTypes.map((x) => `${x.label} ×${x.n}`).join(', ') + ')' : ''}`);
-    L.push(`Answer-first check on the opening sentence: ${m.bluf === true ? 'looks like it leads with the answer' : m.bluf === false ? 'opens with set-up rather than the answer' : 'unclear'}`);
-    L.push(`Numbers used: ${m.numbers}; average sentence length: ${m.avgSentence} words${m.weakEnd ? `; weak ending: "${m.weakEnd}"` : ''}`);
+    if (m.hsia) L.push(`Automatic framework check: headline ${m.hsia.headline ? 'yes' : 'no'}, structure ${m.hsia.structure ? 'yes' : 'no'}, implication ${m.hsia.implication ? 'yes' : 'no'}, action ${m.hsia.action ? 'yes' : 'no'}`);
+    L.push(`Numbers used: ${m.numbers}; average sentence ${m.avgSentence} words${m.weakEnd ? `; weak ending "${m.weakEnd}"` : ''}`);
     return L.join('\n');
   }
   function audioBlock(a) {
     if (!a || !a.ok) return '';
-    return `Acoustic measurements from the recording:
-- Speaking span ${a.activeSpan}s; estimated pace ${a.estWpm || 'n/a'} wpm
-- Pauses: ${a.pauses.deliberate} deliberate (0.6–2s), ${a.pauses.long} long gaps (2s+), ${a.pauses.deliberatePerMin}/min
-- Pitch range ${a.pitch.rangeSt ?? 'n/a'} semitones (under 4 sounds flat; 6+ is expressive)
-- Rising endings on ${a.upspeak.pct ?? 'n/a'}% of phrases (upspeak; under 15% is good)
-- Volume trails off at the end of ${a.volume.trailOffPct}% of phrases`;
+    return `Acoustic measurements: speaking span ${a.activeSpan}s; estimated pace ${a.estWpm || 'n/a'} wpm; ${a.pauses.deliberate} deliberate pauses (${a.pauses.deliberatePerMin}/min), ${a.pauses.long} long gaps; pitch range ${a.pitch.rangeSt ?? 'n/a'} semitones (under 4 is flat); rising endings on ${a.upspeak.pct ?? 'n/a'}% of phrases; volume trails off on ${a.volume.trailOffPct}% of phrases.`;
   }
   function captureNote(source) {
-    if (source === 'dictation') return 'Captured with phone dictation: dictation usually deletes "um" and "uh", so filler counts are a floor, not the truth. Pace is approximate.';
-    if (source === 'typed') return 'This answer was typed, not spoken: do not judge vocal delivery. Set delivery to null.';
-    if (source === 'mic') return 'Captured live from the microphone with speech recognition; the transcript may have small recognition errors and no punctuation. Don\'t penalize recognition mistakes.';
-    if (source === 'upload') return 'Captured from an uploaded recording. The transcript (if any) was pasted by the user.';
+    if (source === 'dictation') return 'Captured with phone dictation, which deletes most "um"s: filler counts are a floor. Pace is approximate.';
+    if (source === 'typed') return 'Typed, not spoken: don\'t judge vocal delivery; set "confidence" from wording only.';
+    if (source === 'mic') return 'Captured live with speech recognition; ignore small recognition errors and missing punctuation.';
+    if (source === 'upload') return 'Captured from an uploaded recording; the transcript (if any) was pasted by them.';
     return '';
   }
+  const HSIA_JSON = `"hsia": {"headline": {"met": true|false, "note": "max 12 words"}, "structure": {...}, "implication": {...}, "action": {...}}`;
 
   /* ---------------- Rep feedback ---------------- */
   function feedbackPrompt(p, spec, rec) {
-    const skills = C.SKILLS.map((s) => s.id).join(', ');
     return `${COACH_VOICE}
 
 ${who(p)}
@@ -106,8 +105,8 @@ Situation: ${spec.situation || '—'}
 Task: ${spec.prompt}
 Time limit: ${spec.time ? spec.time + ' seconds' : 'none'}
 Success criteria:
-${(spec.criteria || []).map((c) => '- ' + c).join('\n') || '- Clear, concise, confident'}
-${rec.attempt > 1 ? `This is attempt ${rec.attempt}. Previous attempt scored ${rec.prevScore ?? 'n/a'}. Comment briefly on what improved or didn't.` : ''}
+${(spec.criteria || []).map((c) => '- ' + c).join('\n') || '- Headline, structure, implication, action'}
+${rec.attempt > 1 ? `Attempt ${rec.attempt}. Previous attempt scored ${rec.prevScore != null ? f1(rec.prevScore / 10) : 'n/a'}/10. Say briefly what improved.` : ''}
 
 HOW IT WAS CAPTURED
 ${captureNote(rec.source)}
@@ -115,7 +114,7 @@ ${captureNote(rec.source)}
 MEASUREMENTS
 ${metricsBlock(rec.metrics)}
 ${audioBlock(rec.audio)}
-${rec.hasImages ? 'Also attached: still frames from their video. Include one note on body language, eye line, framing or setting in "fixes" or "strengths" if it matters.' : ''}
+${rec.hasImages ? 'Also attached: still frames from their video. Include one note on presence (posture, eye line, energy) if it matters.' : ''}
 
 TRANSCRIPT
 """
@@ -127,15 +126,17 @@ ${SCALE}
 Reply with only a JSON object in exactly this shape:
 {
   "headline": "one-sentence verdict, max 18 words",
-  "scores": {"clarity": 0-100, "concision": 0-100, "confidence": 0-100, "delivery": 0-100 or null, "impact": 0-100, "composure": 0-100 or null},
+  "scores": {"framing": 1-10, "clarity": 1-10, "concision": 1-10, "assertive": 1-10, "confidence": 1-10, "decision": 1-10, "stakeholder": 1-10 or null, "commercial": 1-10 or null},
+  ${HSIA_JSON},
+  "stage": 1 | 2 | 3,
   "criteria": [{"criterion": "copy each success criterion", "met": "yes" | "partly" | "no"}],
-  "strengths": ["max 2 specific strengths, each max 20 words"],
-  "fixes": [{"issue": "2-5 word label", "quote": "their exact words, or empty", "why": "max 20 words", "try": "the exact words or behavior to use instead"}],
-  "rewrite": "an executive version of their answer: same facts (invent nothing beyond light placeholders like [X]), answer first, about 60% of the words, written to be spoken in their voice",
-  "next_rep": "one specific instruction for the immediate retry, max 25 words",
-  "skills": [{"id": "one of: ${skills}", "rating": 1-5}]
+  "strengths": ["max 2 specific strengths, max 20 words each"],
+  "fixes": [{"area": "A"|"B"|"C"|"D"|"E", "issue": "2-5 word label", "quote": "their exact words, or empty", "why": "max 20 words", "try": "the exact executive wording to use instead"}],
+  "summary2": "their answer as a two-sentence executive summary",
+  "rewrite": "the executive version, spoken in their voice, in Headline → Structure → Implication → Action order; same facts (light placeholders like [X] allowed, invent nothing); about 60% of their words",
+  "next_rep": "one behavioral instruction for the immediate retry, max 25 words"
 }
-Rules: max 3 fixes, ordered by impact. Composure is null unless the task involves pressure, pushback or a hard question. "skills" lists only skills clearly shown in this rep (max 5).`;
+Rules: "stage" is which stage this answer sounds like (1 Strong Analyst, 2 Strategic Business Leader, 3 Executive). Max 3 fixes, highest impact first, each tagged with the development area it belongs to. Score "stakeholder" and "commercial" only if the rep clearly shows them, otherwise null.`;
   }
 
   /* ---------------- Sparring ---------------- */
@@ -143,16 +144,17 @@ Rules: max 3 fixes, ordered by impact. Composure is null unless the task involve
     return `ROLE-PLAY FOR SPEAKING PRACTICE. Stay in character for the whole conversation.
 
 You are ${persona.name}, ${persona.role}. Style: ${persona.style}
-The person you're speaking with: ${p.name || 'the candidate'}, ${p.role || 'a senior leader'}.
+You're speaking with ${p.name || 'a senior leader'}${p.role ? ', ' + p.role : ''}.
 Scenario: ${ctx}
 Difficulty: ${C.DIFFICULTY[difficulty] || C.DIFFICULTY.tough}
 
 Rules:
-- Speak as you would out loud in the room: one turn at a time, max 45 words, no stage directions, no lists, no markdown.
-- Ask exactly one question per turn. React to their last answer first in a few words when it's natural ("That's a big claim." / "Fine." / "Let me stop you there.").
-- If an answer is vague, long or dodges the question, press on it the way a real ${persona.role} would: ask for the number, the decision, or the risk.
-- Build on what they actually said; don't run through a script.
-- There will be ${rounds} questions in total. On the final turn, after their last answer, give a one-sentence in-character reaction and end with the exact token [END].
+- Speak as you would out loud in the room: one turn at a time, max 50 words, no stage directions, no lists, no markdown.
+- Ask one question or make one move per turn. React to their last answer first in a few words when it's natural.
+- If they bury the conclusion, hedge, ramble or present analysis without a recommendation, react the way a real ${persona.role} would: interrupt, ask for the bottom line, ask what they recommend, or press for the number.
+- If they lead well (clear headline, a recommendation, a decision with an owner), let it land and move on to the next hard question.
+- Build on what they actually said; don't run a script.
+- There will be ${rounds} turns from you in total. After their final answer, give a one-sentence in-character reaction and end with the exact token [END].
 - Their answers are transcribed speech: ignore small transcription errors.`;
   }
   function sparTurns(rules, convo, isLast) {
@@ -178,144 +180,179 @@ ${SCALE}
 Debrief them. Reply with only a JSON object in exactly this shape:
 {
   "headline": "one-sentence verdict, max 18 words",
-  "scores": {"clarity": 0-100, "concision": 0-100, "confidence": 0-100, "delivery": 0-100 or null, "impact": 0-100, "composure": 0-100},
-  "moments": [{"question": "the question, shortened", "verdict": "strong" | "ok" | "weak", "note": "max 20 words on what worked or didn't", "better": "for ok/weak answers: a stronger answer in max 45 words, in their voice; empty for strong"}],
+  "scores": {"framing": 1-10, "clarity": 1-10, "concision": 1-10, "assertive": 1-10, "confidence": 1-10, "decision": 1-10, "stakeholder": 1-10, "commercial": 1-10 or null},
+  "stage": 1 | 2 | 3,
+  "moments": [{"question": "their question, shortened", "verdict": "strong" | "ok" | "weak", "note": "max 20 words", "better": "for ok/weak: a stronger answer in max 45 words, in their voice, headline first; empty for strong"}],
   "strengths": ["max 2"],
-  "patterns": ["max 2 patterns across answers, e.g. 'Buries the number at the end'"],
-  "next_focus": "the one thing to practice next, max 25 words",
-  "skills": [{"id": "skill id from: ${C.SKILLS.map((s) => s.id).join(', ')}", "rating": 1-5}]
+  "patterns": ["max 2 patterns across answers, tied to their development areas"],
+  "next_focus": "the one behavior to practice next, max 25 words"
 }
-One "moments" entry per question asked. Set delivery to null if the answers were typed.`;
+One "moments" entry per question asked. "stage" is which stage they sounded like overall.`;
   }
 
-  /* ---------------- Evaluation import ---------------- */
-  function evaluationPrompt(p, textIn) {
-    return `You are an executive coach reading a client's executive presence evaluation (it may be a 360 report, a coach's assessment, performance review notes or self-reflection).
+  /* ---------------- Meeting review (Section 6 scorecard) ---------------- */
+  function meetingPrompt(p, m, prev) {
+    return `${COACH_VOICE}
 
-Client: ${p.name || 'the client'}, ${p.role || ''}.
+${who(p)}
 
-Map what it says onto this skills framework (use these ids exactly):
-${C.SKILLS.map((s) => `- ${s.id}: ${s.name} (${s.good})`).join('\n')}
+Review this real meeting against their Meeting Performance Scorecard.
+Meeting type: ${C.mtype(m.type).name}
+Meeting: ${m.title}
+What they wanted from it: ${m.goal || 'not stated'}
+${prev ? `Their previous meeting of this type scored ${f1(prev.overall / 10)}/10; the adjustment they set then was: "${prev.adjustment || '—'}". Say whether they made it.` : ''}
 
-EVALUATION TEXT
+TRANSCRIPT OR NOTES (focus on ${p.name || 'their'} contributions; others may appear)
+"""
+${String(m.transcript).slice(0, 60000)}
+"""
+
+${SCALE}
+
+Reply with only a JSON object in exactly this shape:
+{
+  "overall": 1-10,
+  "assessment": "the overall assessment in 2-3 sentences",
+  "scorecard": {"opening": 1-10, "framing": 1-10, "clarity": 1-10, "concision": 1-10, "confidence": 1-10, "judgment": 1-10, "influence": 1-10, "leadership": 1-10, "closing": 1-10},
+  "dims": {${DIM_IDS.split(', ').map((d) => `${d}: 1-10`).join(', ')}},
+  "stage": 1 | 2 | 3,
+  "worked": ["max 3, specific"],
+  "didnt": ["max 3, specific"],
+  "examples": [{"quote": "their exact words from the transcript", "issue": "what was wrong, max 15 words", "executive": "what an executive-level version would sound like"}],
+  "executive_version": "how their most important intervention would sound at executive level, in Headline → Structure → Implication → Action order",
+  "patterns": ["recurring communication habits seen here, tied to development areas A-E, max 3"],
+  "adjustment": "ONE behavioral adjustment for the next meeting, max 20 words",
+  "objective_area": "A" | "B" | "C" | "D" | "E"
+}
+Give 2-4 examples. Use only what the transcript shows; if their part is thin, say so in the assessment and score conservatively.`;
+  }
+
+  /* ---------------- Plan update ---------------- */
+  function planPrompt(p, textIn) {
+    return `You are an executive coach updating a client's development plan from a new assessment (it may be coaching notes, a 360, review comments or a meeting debrief).
+
+Their current plan for reference:
+${who(p)}
+
+NEW ASSESSMENT
 """
 ${String(textIn).slice(0, 60000)}
 """
 
 Reply with only a JSON object in exactly this shape:
 {
-  "summary": "two sentences: how they come across today and the single biggest unlock",
-  "strengths": ["up to 5 strengths named or clearly implied, max 15 words each"],
-  "areas": [{"skill": "skill id", "priority": 1 | 2 | 3, "evidence": "short quote or paraphrase from the evaluation", "target": "what good looks like for them, max 20 words"}],
-  "ratings": {"skill id": 1-5},
-  "behaviors": ["3 signature behaviors to adopt, each an observable habit, max 15 words"],
-  "plan": [{"week": 1, "theme": "max 5 words", "commitments": ["3 specific practice commitments for that week"]}]
+  "summary": "two sentences: how they come across now and the biggest unlock",
+  "baseline": {${DIM_IDS.split(', ').map((d) => `${d}: 1-10 or null`).join(', ')}},
+  "overall": 1-10 or null,
+  "strengths": [{"title": "short title", "points": ["max 4 short points"]}],
+  "tendencies": {"A": ["current tendency, short"], "B": [], "C": [], "D": [], "E": []},
+  "objective_area": "A" | "B" | "C" | "D" | "E"
 }
-Rules: 3-6 areas, priority 1 = most important. Rate only skills the evaluation gives evidence for. Plan has exactly 4 weeks that build on each other. Use only what the text supports; don't invent feedback.`;
+Only set a baseline score where the assessment supports one; otherwise null. Keep their wording where you can.`;
   }
 
-  /* ---------------- Meeting prep ---------------- */
+  /* ---------------- Meeting prep (Before) ---------------- */
   function prepPrompt(p, f) {
     return `${COACH_VOICE}
 
 ${who(p)}
 
-They have an important meeting coming up and want to walk in with presence. Build their prep.
+Build their prep for an upcoming meeting, following their "Before" routine: intended outcome, central message, three supporting points, difficult questions, and the decision or action required.
 
 Meeting: ${f.title}
 Audience: ${f.audience}
 Time they'll have: ${f.time || 'unknown'}
-What they want the audience to decide or do: ${f.objective}
-Key facts and numbers they can use: ${f.facts || 'none given'}
+Intended outcome (what they want decided or done): ${f.objective}
+Key facts and numbers: ${f.facts || 'none given'}
 What worries them: ${f.worries || 'nothing given'}
 
 Reply with only a JSON object in exactly this shape:
 {
-  "key_message": "the one sentence they want remembered, max 25 words",
-  "opening": "their first two sentences, verbatim, answer-first",
+  "key_message": "the central message in one sentence, max 25 words",
+  "summary2": "a two-sentence executive summary they could open with",
+  "opening": "their first two sentences, verbatim, headline first",
   "points": [{"point": "supporting point, max 15 words", "proof": "the fact or number that proves it"}],
-  "questions": [{"q": "a tough question this audience is likely to ask", "a": "a strong answer in max 45 words, answer-first"}],
-  "ask": "the explicit ask, verbatim",
-  "close": "a closing line, verbatim",
-  "watch_outs": ["2 reminders tied to their development focus, max 15 words each"]
+  "implication": "the strategic implication, one sentence",
+  "questions": [{"q": "a difficult question this audience is likely to ask", "a": "a strong answer, max 45 words, headline first"}],
+  "ask": "the decision or action required, verbatim",
+  "close": "a closing line that confirms decisions, owners and dates",
+  "watch_outs": ["2 reminders tied to their development areas, max 15 words each"]
 }
-Exactly 3 points and 4 questions. Use only the facts given; where a number is missing write [number].`;
+Exactly 3 points and 4 questions. Use only the facts given; write [number] where a figure is missing.`;
   }
 
-  /* ---------------- Sharpen ---------------- */
   function sharpenPrompt(p, textIn, audience, mode) {
     return `${COACH_VOICE}
 
 ${who(p)}
 
-Rewrite the text below so it sounds like a confident senior executive ${mode === 'spoken' ? 'saying it out loud' : 'writing it'}, for this audience: ${audience}.
-Answer or recommendation first. Cut hedges, fillers and throat-clearing. Prefer short sentences and specific numbers. Keep every fact; invent none. Keep their voice; don't make it pompous.
+Rewrite the text below so it sounds like a confident senior executive ${mode === 'spoken' ? 'saying it out loud' : 'writing it'}, for this audience: ${audience}. Use their framework: headline first, two or three supporting points, the implication, then the action. Use their executive phrases where natural. Cut hedges, fillers and throat-clearing. Keep every fact; invent none. Keep their voice; don't make it pompous.
 
 TEXT
 """
 ${String(textIn).slice(0, 15000)}
 """
 
-Reply with only a JSON object: {"sharpened": "the rewrite", "changes": ["the 3 most important changes you made, max 15 words each"]}`;
+Reply with only a JSON object: {"sharpened": "the rewrite", "summary2": "a two-sentence executive summary", "changes": ["the 3 most important changes, max 15 words each"]}`;
   }
 
-  /* ---------------- Visual check ---------------- */
-  function visualPrompt(p, context, n) {
-    return `You are an executive presence coach reviewing how a senior leader comes across visually. ${n > 1 ? `The ${n} attached images are frames from one video` : 'The attached image is a photo'} of them in this setting: ${context}.
+  function hsiaPrompt(p, kase, fld) {
+    return `${COACH_VOICE}
 
 ${who(p)}
 
-Judge only what is visible: posture, eye line and camera angle, framing, lighting, facial expression and energy, attire and background polish. Be specific about what to change (e.g. "raise the camera about 10 cm so the lens is at eye level"). Don't comment on physical features a person can't or shouldn't change.
+They are practicing the Headline → Structure → Implication → Action framework on this case.
+Case: ${kase.title}. Audience: ${kase.audience}.
+Raw notes they were given:
+${kase.notes.map((n) => '- ' + n).join('\n')}
 
-Reply with only a JSON object in exactly this shape:
-{
-  "headline": "one-sentence verdict, max 18 words",
-  "scores": {"posture": 1-10, "eye_line": 1-10, "framing": 1-10, "lighting": 1-10, "expression": 1-10, "polish": 1-10},
-  "keep": ["max 2 things working well"],
-  "fixes": [{"issue": "2-5 word label", "try": "a specific change"}]
-}
+Their answer:
+HEADLINE: ${fld.headline}
+STRUCTURE: ${fld.structure.filter(Boolean).map((x, i) => `(${i + 1}) ${x}`).join(' ')}
+IMPLICATION: ${fld.implication}
+ACTION: ${fld.action}
+
+${SCALE}
+
+Reply with only a JSON object:
+{"score": 1-10, "verdict": "one sentence, max 18 words", "parts": {"headline": {"score": 1-10, "note": "max 15 words"}, "structure": {...}, "implication": {...}, "action": {...}}, "model": {"headline": "...", "structure": ["...", "..."], "implication": "...", "action": "..."}, "summary2": "the case as a two-sentence executive summary"}`;
+  }
+
+  function visualPrompt(p, context, n) {
+    return `You are an executive presence coach reviewing how a senior leader comes across visually. ${n > 1 ? `The ${n} attached images are frames from one video` : 'The attached image is a photo'} of them in this setting: ${context}.
+They are ${p.role || 'a senior leader'} working toward executive-level presence.
+
+Judge only what is visible: posture, eye line and camera angle, framing, lighting, facial expression and energy, attire and background polish. Be specific about what to change. Don't comment on physical features a person can't or shouldn't change.
+
+Reply with only a JSON object:
+{"headline": "one-sentence verdict, max 18 words", "scores": {"posture": 1-10, "eye_line": 1-10, "framing": 1-10, "lighting": 1-10, "expression": 1-10, "polish": 1-10}, "keep": ["max 2"], "fixes": [{"issue": "2-5 word label", "try": "a specific change"}]}
 Max 4 fixes, highest impact first.`;
   }
 
-  /* ---------------- Weekly review ---------------- */
   function reviewPrompt(p, summary) {
     return `${COACH_VOICE}
 
 ${who(p)}
 
-Here is their practice data for the last 7 days, with the 7 days before for comparison:
+Their practice and meeting data for the last 7 days, with the 7 days before for comparison (scores are 0-100; divide by 10 for the 1-10 scale):
 ${summary}
 
-Write their weekly review. Reply with only a JSON object in exactly this shape:
+Write their weekly review in the spirit of their "After" routine: identify patterns, compare against before, set one improvement objective. Reply with only a JSON object:
 {
   "headline": "one-sentence summary of the week, max 18 words",
   "wins": ["max 3 specific wins backed by the data"],
-  "patterns": ["max 3 patterns to work on, specific, backed by the data"],
-  "focus": {"skill": "one skill id from: ${C.SKILLS.map((s) => s.id).join(', ')}", "why": "max 25 words", "drill": "a daily 5-minute drill for this week, max 30 words"},
-  "challenge": "one real-world challenge to try in a meeting this week, max 25 words"
+  "patterns": ["max 3 patterns to work on, backed by the data"],
+  "focus": {"area": "A" | "B" | "C" | "D" | "E", "why": "max 25 words", "drill": "a daily 5-minute drill for this week, max 30 words"},
+  "challenge": "one real-world challenge for a meeting this week, max 25 words",
+  "stage_note": "one sentence on progress toward their target and the next stage"
 }
 If there was little practice, say so plainly and make the focus about consistency.`;
-  }
-
-  function fieldPrompt(p, log) {
-    return `${COACH_VOICE}
-
-${who(p)}
-
-They logged a real meeting:
-Meeting: ${log.title}
-Audience and stakes: ${log.audience || '—'}; stakes ${log.stakes}
-Self-ratings (1-5): clarity ${log.r.clarity}, concision ${log.r.concision}, confidence ${log.r.confidence}, composure ${log.r.composure}
-What went well: ${log.well || '—'}
-What they'd change: ${log.change || '—'}
-
-Give your take in 3 short paragraphs, max 120 words total: what the self-ratings and notes suggest, one thing to keep doing, and one specific thing to rehearse before the next meeting like this. Plain text, no headings, no lists.`;
   }
 
   return {
     init, json, text, errorText,
     get state() { return state; }, get ready() { return state === 'ready'; }, get imagesOk() { return imagesOk; },
     on: (f) => { subs.add(f); return () => subs.delete(f); },
-    feedbackPrompt, sparRules, sparTurns, debriefPrompt, evaluationPrompt, prepPrompt, sharpenPrompt, visualPrompt, reviewPrompt, fieldPrompt,
+    feedbackPrompt, sparRules, sparTurns, debriefPrompt, meetingPrompt, planPrompt, prepPrompt, sharpenPrompt, hsiaPrompt, visualPrompt, reviewPrompt,
   };
 })();

@@ -5,7 +5,7 @@ root = pathlib.Path(__file__).parent
 src = root / 'src'
 dx = [[x['id'], x['module'], x['title'], x['scope']] for x in json.loads((root.parent / 'data' / 'curriculum.json').read_text())]
 content = (src / 'content.js').read_text().replace('/*DX_CURRICULUM*/[]', json.dumps(dx, ensure_ascii=False))
-js = '\n'.join([content] + [(src / f).read_text() for f in ['analysis.js', 'store.js', 'ai.js', 'ui-core.js', 'ui-views.js', 'flows-rep.js', 'flows-more.js']])
+js = '\n'.join([content] + [(src / f).read_text() for f in ['plan.js', 'analysis.js', 'store.js', 'ai.js', 'game.js', 'ui-core.js', 'ui-views.js', 'flows-rep.js', 'games-ui.js', 'flows-more.js']])
 page = (src / 'head.html').read_text() + '<style>\n' + (src / 'styles.css').read_text() + '</style>\n' + (src / 'body.html').read_text() + '<script>\n' + js + '\n</script>\n'
 out = root / 'dist'; out.mkdir(exist_ok=True)
 (out / 'green-room.html').write_text(page)

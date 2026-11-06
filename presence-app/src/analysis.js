@@ -59,6 +59,9 @@ const HEDGES = [
   ['\\bI was wondering\\b', 'I was wondering'],
   ['\\bquick question\\b', 'quick question'],
   ["\\bI believe\\b", 'I believe'],
+  ["\\bone thing I was (?:just )?thinking\\b", 'one thing I was thinking'],
+  ["\\bI'm not sure (?:if|whether) (?:this|that) makes sense\\b", "I'm not sure this makes sense"],
+  ["\\b(?:I don't want to overstep|let me think out loud)\\b", 'self-undercutting'],
 ];
 const POWER = [
   ['\\b(?:I|we) recommend\\b|\\bmy recommendation\\b|\\bour recommendation\\b', 'recommend'],
@@ -76,6 +79,20 @@ const IMPACT = /\b(?:revenue|margins?|costs?|savings|returns?|roi|irr|ebitda|pay
 const NUMBERS = /(?:\$\s?\d[\d,.]*\s?(?:k|m|mm|b|bn|million|billion|thousand)?|\b\d[\d,.]*\s?(?:%|percent|x|bps|basis points|million|billion|thousand|k|m|months?|weeks?|days?|years?|quarters?)?(?![\w])|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|forty|fifty|sixty|hundred)(?:[- ]\w+)?\s+(?:percent|million|billion|thousand|times|basis points|months|weeks|years)\b)/gi;
 const BLUF_POS = /\b(?:recommend|recommendation|propose|should|bottom line|the answer is|short answer|my view|our view|we need|I need|the ask|approve|decline|pass on|invest|in short|our thesis|my thesis|the issue is|here's the|here is the|I'm asking|we're asking|we will|we missed|missed|(?:below|above|behind|ahead of) (?:plan|target|budget|forecast)|we are (?:below|behind|ahead)|is (?:\d|yes|no)|yes\b|no\b)/i;
 const BLUF_NEG = /\b(?:background|context|before I|let me (?:start|give|walk|begin)|to give you|as you (?:know|may know)|I wanted to (?:start|give)|so basically|first,? (?:some|a bit of|a little) (?:background|context)|thanks for having me|great question)\b/i;
+const IMPLIC = /\b(?:which means|that means|this means|what this means|the (?:strategic )?implications?|matters because|this matters|so what|the impact (?:is|on)|as a result|therefore|the upside is|the downside is|the consequence|so we|that's why)\b/i;
+const ACTION = /\b(?:next steps?|I recommend|my recommendation|we should|we need to|the decision (?:we need|in front|for us)|I'm asking|we're asking|I am asking|we are asking|I propose|let's|I will|I'll|we will|we'll|owns?|owner|by (?:monday|tuesday|wednesday|thursday|friday|next week|end of|the \d+|q[1-4])|approve|approval|sign off|reconvene|follow up)\b/i;
+const RECOMMEND = /\b(?:I|we) recommend\b|\bmy recommendation\b|\bI propose\b|\bI(?:'d| would) prioriti[sz]e\b|\bmy (?:call|view) is\b|\bI(?:'d| would) (?:pass|invest|proceed|approve|partner|build|wait)\b|\bbottom line\b/i;
+const recommends = (t) => {
+  if (RECOMMEND.test(t)) return true;
+  const re = /\b(\w+)\s+we should\b(?!\s+(?:consider|probably|maybe|think|look|explore))/gi; let m;
+  while ((m = re.exec(t))) if (!/^(?:maybe|perhaps|probably|possibly|think)$/i.test(m[1])) return true;
+  return /^we should\b(?!\s+(?:consider|probably|maybe|think|look|explore))/i.test(t);
+};
+const CHANGE_MIND = /\bwhat would change my mind\b|\bchange my (?:mind|view)\b|\bunless\b|\bif and only if\b/i;
+const TRADEOFF = /\btrade-?offs?\b|\bversus\b|\bvs\.?\b|\binstead of\b|\bat the cost of\b|\bin exchange for\b|\brather than\b|\bthe cost of\b/i;
+const OWNERSHIP = /\bI(?:'ll| will) own\b|\bI own\b|\bowns?\b|\bowner\b|\baccountab/i;
+const FRAMING = /\bthe (?:fundamental|core|real|central|strategic) (?:issue|question|problem|point|choice)\b|\bthe question (?:is|in front of us)\b|\bwhat matters (?:here|most)\b|\bstrategic(?:ally)?\b|\bthe decision we need\b/i;
+const MANY_POINTS = /\b(?:fourth(?:ly)?|fifth(?:ly)?|sixth|(?:four|five|six|seven|eight) (?:things|reasons|points|considerations|factors|risks|issues))\b/i;
 const WEAK_END = /(?:so yeah|\byeah|that's (?:it|all|about it)|I guess|anyway|or something|does that make sense|if that makes sense|I don't know|you know|and stuff)\W*$/i;
 
 function compile(list) { return list.map(([src, label]) => ({ re: new RegExp(src, 'gim'), label })); }
@@ -185,7 +202,19 @@ A.analyzeText = function (raw, opts = {}) {
   const flesch = n ? A.round(206.835 - 1.015 * (n / Math.max(1, sentLens.length)) - 84.6 * (syl / n)) : null;
 
   const wpm = minutes && durationSec >= 8 ? A.round(n / minutes) : null;
+  const tail = sentences.length >= 3 ? sentences.slice(-2).join(' ') : words.slice(Math.floor(n * 0.55)).join(' ');
+  const tooMany = MANY_POINTS.test(text);
+  const execPhrases = (typeof C !== 'undefined' && C.EXEC_PHRASES ? C.EXEC_PHRASES : []).filter((p) => p.re.test(text)).map((p) => p.id);
+  const weakPhrases = (typeof C !== 'undefined' && C.WEAK_PHRASES ? C.WEAK_PHRASES : []).filter((p) => p.re.test(text)).map((p) => p.say);
+  const hsia = {
+    headline: bluf === true,
+    structure: !tooMany && (signposts >= 1 || execPhrases.includes('two')),
+    implication: IMPLIC.test(text),
+    action: n >= 8 && ACTION.test(tail),
+  };
   return {
+    v: 2, hsia, tooMany, execPhrases, weakPhrases,
+    recommends: recommends(text), changeMind: CHANGE_MIND.test(text), tradeoff: TRADEOFF.test(text), ownership: OWNERSHIP.test(text), framingPhrase: FRAMING.test(text),
     text, words: n, durationSec, wpm, spoken, source: opts.source || 'typed',
     fillers: { total: fillerHits.length, byType: countBy(fillerHits), perMin: minutes ? A.round(fillerHits.length / minutes, 1) : null, per100: n ? A.round((fillerHits.length / n) * 100, 1) : 0 },
     hedges: { total: hedgeHits.length, byType: countBy(hedgeHits), per100: n ? A.round((hedgeHits.length / n) * 100, 1) : 0 },
@@ -219,7 +248,8 @@ A.highlight = function (ta) {
 };
 
 /**
- * Score a rep. ta = text analysis (may be null), au = audio analysis (may be null).
+ * Score a rep on the plan's dimensions (0-100 internally, shown /10).
+ * ta = text analysis (may be null), au = audio analysis (may be null).
  * opts: { paceLo, paceHi, timeLimit }
  */
 A.score = function (ta, au, opts = {}) {
@@ -227,88 +257,85 @@ A.score = function (ta, au, opts = {}) {
   const s = {};
   const notes = [];
   const n = ta ? ta.words : 0;
+  const cl = (v) => Math.round(A.clamp(v, 20, 100));
 
-  // Delivery
+  // Executive confidence: how it sounds (pace, fillers, pauses, pitch, rising endings)
   const del = [];
   let wpm = ta && ta.wpm;
   if (!wpm && au && au.estWpm) wpm = au.estWpm;
-  if (wpm) {
-    const d = wpm < lo ? lo - wpm : wpm > hi ? wpm - hi : 0;
-    del.push([A.clamp(100 - d * 1.6, 30, 100), 0.3]);
-  }
+  if (wpm) { const d = wpm < lo ? lo - wpm : wpm > hi ? wpm - hi : 0; del.push([A.clamp(100 - d * 1.6, 30, 100), 0.3]); }
   if (ta && n >= 10) {
     const perMin = ta.fillers.perMin != null ? ta.fillers.perMin : ta.fillers.per100 * 1.45;
     del.push([A.clamp(100 - Math.max(0, perMin - 1) * 14, 20, 100), 0.35]);
+    if (ta.weakEnd) del.push([60, 0.1]);
   }
   if (au && au.ok) {
     const dp = au.pauses.deliberatePerMin;
-    const pauseScore = dp < 3 ? 100 - (3 - dp) * 15 : dp > 14 ? 100 - (dp - 14) * 6 : 100;
+    del.push([A.clamp(dp < 3 ? 100 - (3 - dp) * 15 : dp > 14 ? 100 - (dp - 14) * 6 : 100, 40, 100), 0.12]);
     const range = au.pitch.rangeSt;
-    const pitchScore = range == null ? null : range >= 6 ? 100 : range >= 3 ? 60 + (range - 3) * 13 : 40 + range * 7;
-    const up = au.upspeak.pct;
-    const upScore = up == null ? null : up <= 15 ? 100 : A.clamp(100 - (up - 15) * 1.6, 40, 100);
-    del.push([A.clamp(pauseScore, 40, 100), 0.12]);
-    if (pitchScore != null) del.push([pitchScore, 0.13]);
-    if (upScore != null) del.push([upScore, 0.1]);
+    if (range != null) del.push([range >= 6 ? 100 : range >= 3 ? 60 + (range - 3) * 13 : 40 + range * 7, 0.13]);
+    if (au.upspeak.pct != null) del.push([au.upspeak.pct <= 15 ? 100 : A.clamp(100 - (au.upspeak.pct - 15) * 1.6, 40, 100), 0.1]);
   }
-  if (del.length) { const w = del.reduce((a, [, x]) => a + x, 0); s.delivery = Math.round(del.reduce((a, [v, x]) => a + v * x, 0) / w); }
+  if (del.length && ta && ta.source !== 'typed' || del.length && !ta) { const w = del.reduce((a, [, x]) => a + x, 0); s.confidence = Math.round(del.reduce((a, [v, x]) => a + v * x, 0) / w); }
 
   if (ta && n >= 10) {
-    // Confidence
-    let conf = 100 - ta.hedges.per100 * 9 - ta.apologies * 8 - (ta.weakEnd ? 10 : 0) + Math.min(10, ta.power.total * 3);
-    s.confidence = Math.round(A.clamp(conf, 20, 100));
-    // Clarity
-    let cl = 58 + (ta.bluf === true ? 24 : ta.bluf === 'unclear' ? 6 : -12) + Math.min(12, ta.signposts * 6);
-    cl += ta.avgSentence <= 18 ? 6 : ta.avgSentence <= 24 ? 2 : ta.avgSentence > 30 ? -10 : -4;
-    s.clarity = Math.round(A.clamp(cl, 20, 100));
-    // Concision
-    let co = 100 - Math.max(0, ta.avgSentence - 18) * 2.5 - ta.longSentences * 4 - ta.repeats.length * 4
+    const h = ta.hsia;
+    s.assertive = cl(100 - ta.hedges.per100 * 9 - ta.apologies * 8 - (ta.weakEnd ? 10 : 0) - ta.weakPhrases.length * 6 + Math.min(10, ta.power.total * 3) + (ta.ownership ? 4 : 0));
+    let c = 56 + (ta.bluf === true ? 24 : ta.bluf === 'unclear' ? 6 : -12) + Math.min(10, ta.signposts * 5) + (h.structure ? 4 : 0);
+    c += ta.avgSentence <= 18 ? 6 : ta.avgSentence <= 24 ? 2 : ta.avgSentence > 30 ? -10 : -4;
+    s.clarity = cl(c);
+    let co = 100 - Math.max(0, ta.avgSentence - 18) * 2.5 - ta.longSentences * 4 - ta.repeats.length * 5 - (ta.tooMany ? 8 : 0)
       - ((ta.fillers.total + ta.hedges.total) / Math.max(1, n)) * 100 * 1.5;
     if (opts.timeLimit && ta.durationSec && ta.durationSec > opts.timeLimit * 1.15) co -= ((ta.durationSec / opts.timeLimit) - 1) * 40;
-    s.concision = Math.round(A.clamp(co, 20, 100));
-    // Executive impact
-    let im = 45 + Math.min(24, ta.numbers * 8) + Math.min(15, ta.impactWords * 3) + (ta.asks ? 10 : 0) + (ta.bluf === true ? 6 : 0);
-    s.impact = Math.round(A.clamp(im, 20, 100));
+    s.concision = cl(co);
+    s.framing = cl(48 + (h.implication ? 16 : 0) + Math.min(14, ta.numbers * 5) + Math.min(10, ta.impactWords * 2) + (ta.framingPhrase ? 10 : 0) + (ta.bluf === true ? 4 : 0));
+    s.decision = cl(42 + (ta.recommends ? 20 : 0) + (h.action ? 16 : 0) + (ta.changeMind ? 10 : 0) + (ta.tradeoff ? 8 : 0) + (ta.ownership ? 6 : 0) - (ta.bluf === false ? 6 : 0));
   }
-  const vals = ['clarity', 'concision', 'confidence', 'delivery', 'impact'].map((k) => s[k]).filter((v) => v != null);
+  const keys = ['framing', 'clarity', 'concision', 'assertive', 'confidence', 'decision'];
+  const vals = keys.map((k) => s[k]).filter((v) => v != null);
   s.overall = vals.length ? Math.round(mean(vals)) : null;
 
-  // Coaching notes (rule-based), most important first
+  // Coaching notes, tied to development areas A-E
   if (ta && n >= 10) {
-    if (ta.bluf === false) notes.push({ w: 9, dim: 'clarity', text: 'You opened with set-up. Put the answer, recommendation or ask in your first sentence.' });
-    if (ta.fillers.total >= 3) {
-      const top = ta.fillers.byType.slice(0, 2).map((x) => `"${x.label}" ×${x.n}`).join(', ');
-      notes.push({ w: 7 + Math.min(3, ta.fillers.total / 4), dim: 'delivery', text: `${ta.fillers.total} fillers (${top}). Swap each one for a silent beat.` });
-    }
-    if (ta.hedges.total >= 2) {
-      const top = ta.hedges.byType.slice(0, 3).map((x) => `"${x.label}"`).join(', ');
-      notes.push({ w: 7 + Math.min(3, ta.hedges.total / 3), dim: 'confidence', text: `${ta.hedges.total} hedges (${top}). Cut them, or replace them with one precise statement of what you don't know.` });
-    }
-    if (ta.avgSentence > 24 && ta.punctuated) notes.push({ w: 6, dim: 'concision', text: `Your sentences average ${Math.round(ta.avgSentence)} words. Aim for under 20; break at every "and".` });
-    if (ta.numbers === 0 && n > 50) notes.push({ w: 5, dim: 'impact', text: 'No numbers. One specific figure makes the point concrete and credible.' });
-    if (ta.weakEnd) notes.push({ w: 6, dim: 'confidence', text: `You ended on "${ta.weakEnd}". End on your recommendation, then stop.` });
-    if (!ta.asks && n > 60) notes.push({ w: 3, dim: 'impact', text: 'No explicit ask. Say what you want them to decide or do.' });
-    if (ta.repeats.length) notes.push({ w: 3, dim: 'concision', text: `Repeated phrase: "${ta.repeats[0].phrase}". Say it once.` });
+    const h = ta.hsia;
+    if (ta.bluf === false) notes.push({ w: 10, area: 'A', dim: 'clarity', text: 'You built up to the point. Start with the conclusion: "My recommendation is…"' });
+    if (!ta.recommends && n > 45) notes.push({ w: 8, area: 'C', dim: 'decision', text: 'Analysis without a verdict. State what you recommend and what would change your mind.' });
+    if (ta.weakPhrases.length) notes.push({ w: 8, area: 'D', dim: 'assertive', text: `You said "${ta.weakPhrases[0].replace('…', '')}". Swap it for an executive phrase from your arsenal.` });
+    if (ta.hedges.total >= 2) notes.push({ w: 7 + Math.min(3, ta.hedges.total / 3), area: 'D', dim: 'assertive', text: `${ta.hedges.total} hedges (${ta.hedges.byType.slice(0, 3).map((x) => `"${x.label}"`).join(', ')}). Speak with measured conviction.` });
+    if (ta.tooMany) notes.push({ w: 7, area: 'B', dim: 'concision', text: 'More than three points. Keep the three that change the decision.' });
+    if (!h.action && n > 40) notes.push({ w: 7, area: 'E', dim: 'decision', text: 'No explicit next action. Close with the decision or next step, an owner and a date.' });
+    if (!h.implication && n > 50) notes.push({ w: 6, area: 'A', dim: 'framing', text: 'No implication. Say why it matters: "The strategic implication is…"' });
+    if (!h.structure && n > 60) notes.push({ w: 5, area: 'B', dim: 'clarity', text: 'No structure signposted. Preview it: "There are two considerations here."' });
+    if (ta.fillers.total >= 3) notes.push({ w: 6 + Math.min(3, ta.fillers.total / 4), area: 'D', dim: 'confidence', text: `${ta.fillers.total} fillers (${ta.fillers.byType.slice(0, 2).map((x) => `"${x.label}" ×${x.n}`).join(', ')}). Swap each for a silent beat.` });
+    if (ta.avgSentence > 24 && ta.punctuated) notes.push({ w: 6, area: 'B', dim: 'concision', text: `Sentences average ${Math.round(ta.avgSentence)} words. Aim for under 20.` });
+    if (ta.repeats.length) notes.push({ w: 4, area: 'B', dim: 'concision', text: `Repeated phrase: "${ta.repeats[0].phrase}". Say it once, then stop.` });
+    if (ta.numbers === 0 && n > 50) notes.push({ w: 4, area: 'A', dim: 'framing', text: 'No numbers. One specific figure makes the judgment credible.' });
+    if (ta.weakEnd) notes.push({ w: 5, area: 'D', dim: 'assertive', text: `You ended on "${ta.weakEnd}". End on the recommendation or the action, then stop.` });
   }
   if (wpm) {
-    if (wpm > hi + 5) notes.push({ w: 6 + Math.min(3, (wpm - hi) / 15), dim: 'delivery', text: `${Math.round(wpm)} words a minute is above your ${lo}–${hi} band. Slow down most on numbers and your key sentence.` });
-    else if (wpm < lo - 15) notes.push({ w: 4, dim: 'delivery', text: `${Math.round(wpm)} words a minute is on the slow side. Move faster through context; slow down only for the point.` });
+    if (wpm > hi + 5) notes.push({ w: 6 + Math.min(3, (wpm - hi) / 15), area: 'D', dim: 'confidence', text: `${Math.round(wpm)} words a minute is above your ${lo}–${hi} band. Speak deliberately.` });
+    else if (wpm < lo - 15) notes.push({ w: 3, area: 'D', dim: 'confidence', text: `${Math.round(wpm)} words a minute is slow. Move through context; slow down for the point.` });
   }
   if (au && au.ok) {
-    if (au.upspeak.pct != null && au.upspeak.pct > 25 && au.upspeak.segments >= 4) notes.push({ w: 6, dim: 'delivery', text: `About ${Math.round(au.upspeak.pct)}% of your phrases ended on a rising pitch. Land statements down.` });
-    if (au.pitch.rangeSt != null && au.pitch.rangeSt < 4) notes.push({ w: 5, dim: 'delivery', text: `Your pitch range was narrow (${au.pitch.rangeSt} semitones). Lift for contrast, drop for conclusions.` });
-    if (au.pauses.deliberatePerMin < 2 && au.activeSpan > 30) notes.push({ w: 4, dim: 'delivery', text: 'Few deliberate pauses. Pause before your key sentence and after it.' });
-    if (au.pauses.long >= 2) notes.push({ w: 3, dim: 'delivery', text: `${au.pauses.long} gaps longer than two seconds. Plan your next point before you need it.` });
-    if (au.volume.trailOffPct > 30 && au.upspeak.segments >= 4) notes.push({ w: 4, dim: 'delivery', text: 'Your volume often drops at the end of phrases. Keep energy through the last word.' });
+    if (au.upspeak.pct != null && au.upspeak.pct > 25 && au.upspeak.segments >= 4) notes.push({ w: 6, area: 'D', dim: 'confidence', text: `About ${Math.round(au.upspeak.pct)}% of your phrases ended on a rising pitch. Land statements down.` });
+    if (au.pitch.rangeSt != null && au.pitch.rangeSt < 4) notes.push({ w: 4, area: 'D', dim: 'confidence', text: `Narrow pitch range (${au.pitch.rangeSt} semitones). Lift for contrast, drop for conclusions.` });
+    if (au.pauses.deliberatePerMin < 2 && au.activeSpan > 30) notes.push({ w: 4, area: 'D', dim: 'confidence', text: 'Few deliberate pauses. Pause before and after your headline.' });
   }
-  if (opts.timeLimit && ta && ta.durationSec && ta.durationSec > opts.timeLimit * 1.15) {
-    notes.push({ w: 6, dim: 'concision', text: `You ran ${Math.round(ta.durationSec - opts.timeLimit)}s over the ${opts.timeLimit}s limit.` });
-  }
+  if (opts.timeLimit && ta && ta.durationSec && ta.durationSec > opts.timeLimit * 1.15) notes.push({ w: 6, area: 'B', dim: 'concision', text: `You ran ${Math.round(ta.durationSec - opts.timeLimit)}s over the ${opts.timeLimit}s limit.` });
   notes.sort((a, b) => b.w - a.w);
-  if (!notes.length && n >= 20) notes.push({ w: 1, dim: 'clarity', text: 'Clean rep. Now say it 20% shorter with the same punch.' });
-  s.notes = notes.slice(0, 4).map((x) => ({ dim: x.dim, text: x.text }));
+  if (!notes.length && n >= 20) notes.push({ w: 1, area: 'B', dim: 'concision', text: 'Clean rep. Now say it 20% shorter with the same punch.' });
+  s.notes = notes.slice(0, 4).map((x) => ({ area: x.area, dim: x.dim, text: x.text }));
   s.wpm = wpm ? Math.round(wpm) : null;
   return s;
+};
+
+/* Map scores saved before the plan dimensions existed */
+A.normScores = function (sc) {
+  if (!sc || sc.v === 2 || sc.framing != null || sc.assertive != null || sc.decision != null) return sc || {};
+  const out = { clarity: sc.clarity, concision: sc.concision, assertive: sc.confidence, confidence: sc.delivery, framing: sc.impact };
+  const v = Object.values(out).filter((x) => x != null);
+  out.overall = sc.overall != null ? sc.overall : v.length ? Math.round(mean(v)) : null;
+  return out;
 };
 
 /* ------------------------------------------------------------

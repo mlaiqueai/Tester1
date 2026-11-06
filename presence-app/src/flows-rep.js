@@ -20,7 +20,7 @@ const Sheet = {
     runCleanups();
     Rec.cancel();
     try { window.speechSynthesis && speechSynthesis.cancel(); } catch (e) { /* ignore */ }
-    S.sheet = null; S.rep = null; S.spar = null; S.drill = null; S.tool = null;
+    S.sheet = null; S.rep = null; S.spar = null; S.drill = null; S.tool = null; S.game = null;
     const el = $('#sheet');
     el.hidden = true; el.innerHTML = '';
     document.body.style.overflow = '';
@@ -154,17 +154,17 @@ function trackDictation(box, onTick) {
 function scenarioSpec(id) { const s = C.SCENARIOS.find((x) => x.id === id); return s ? Object.assign({ kind: 'scenario', refId: s.id }, s) : null; }
 function impromptuSpec(i) {
   const idx = i == null ? Math.floor(Math.random() * C.IMPROMPTU.length) : Number(i);
-  return { kind: 'impromptu', refId: String(idx), title: 'Impromptu, 60 seconds', audience: 'A room of senior colleagues.', situation: 'No preparation. A few seconds to think.', prompt: C.IMPROMPTU[idx % C.IMPROMPTU.length], criteria: ['A clear position in the first sentence', 'One reason, with an example', 'A close that restates the point', 'Done inside 60 seconds'], tip: 'Use PREP: Point, Reason, Example, Point.', time: 60, focus: ['conviction', 'concision', 'structure'] };
+  return { kind: 'impromptu', refId: String(idx), title: 'Impromptu, 60 seconds', audience: 'A room of senior colleagues.', situation: 'No preparation. A few seconds to think.', prompt: C.IMPROMPTU[idx % C.IMPROMPTU.length], criteria: ['A clear position in the first sentence', 'One reason, with an example', 'A close that restates the point', 'Done inside 60 seconds'], tip: 'Use PREP: Point, Reason, Example, Point.', time: 60, areas: ['C', 'A'] };
 }
 function teachbackSpec(dx) {
   dx = dx || C.dxEstimate(new Date());
-  return { kind: 'teachback', refId: dx[0], title: `Teach-back: ${dx[2]}`, audience: 'A board member with no diagnostics background. Smart, busy and allergic to jargon.', situation: `From the DX Daily curriculum (${dx[1]}). ${dx[3] || ''}`.trim(), prompt: `Explain "${dx[2]}" in 60 seconds: what it is in one sentence, why it matters in dollars or patients, and one example.`, criteria: ['A plain-English definition in one sentence', 'Why it matters, with a number', 'One concrete example or analogy', 'No unexplained acronyms'], tip: 'If you use an acronym, define it in five words or drop it.', time: 60, focus: ['altitude', 'concision', 'precision'] };
+  return { kind: 'teachback', refId: dx[0], title: `Teach-back: ${dx[2]}`, audience: 'A board member with no diagnostics background. Smart, busy and allergic to jargon.', situation: `From the DX Daily curriculum (${dx[1]}). ${dx[3] || ''}`.trim(), prompt: `Explain "${dx[2]}" in 60 seconds: what it is in one sentence, why it matters in dollars or patients, and one example.`, criteria: ['A plain-English definition in one sentence', 'Why it matters, with a number', 'One concrete example or analogy', 'No unexplained acronyms'], tip: 'If you use an acronym, define it in five words or drop it.', time: 60, areas: ['A', 'B'] };
 }
 function customSpec(f = {}) {
-  return { kind: 'custom', refId: 'custom', title: f.title || 'Your own prompt', audience: f.audience || 'Senior executives', situation: f.situation || '', prompt: f.prompt || '', criteria: f.criteria || ['Answer or recommendation in the first sentence', 'One or two supporting points with a number', 'A clear ask or close', 'Inside the time limit'], tip: f.tip || 'Say the headline first. Then stop sooner than feels natural.', time: f.time || 60, focus: f.focus || ['bluf', 'concision'], editable: !f.prompt };
+  return { kind: 'custom', refId: 'custom', title: f.title || 'Your own prompt', audience: f.audience || 'Senior executives', situation: f.situation || '', prompt: f.prompt || '', criteria: f.criteria || ['Answer or recommendation in the first sentence', 'One or two supporting points with a number', 'A clear ask or close', 'Inside the time limit'], tip: f.tip || 'Say the headline first. Then stop sooner than feels natural.', time: f.time || 60, areas: f.areas || ['A', 'B'], editable: !f.prompt };
 }
 function questionSpec(q, aud, refId) {
-  return { kind: 'question', refId: refId || 'prep', title: 'Tough question', audience: aud || 'Senior executives', situation: 'From your meeting prep.', prompt: q, criteria: ['Answers in the first sentence', 'One proof point', 'Stops when done', 'Under 45 seconds'], tip: 'Pause. Answer. Prove. Stop.', time: 45, focus: ['qa', 'composure', 'bluf'] };
+  return { kind: 'question', refId: refId || 'prep', title: 'Tough question', audience: aud || 'Senior executives', situation: 'From your meeting prep.', prompt: q, criteria: ['Answers in the first sentence', 'One proof point', 'Stops when done', 'Under 45 seconds'], tip: 'Pause. Answer. Prove. Stop.', time: 45, areas: ['A', 'D'] };
 }
 
 /* ---------------- Rep flow ---------------- */
@@ -175,7 +175,7 @@ function openRep(spec, opts = {}) {
   if (S.rep.mode === 'mic' && S.micBlocked) S.rep.mode = 'dictate';
   Sheet.open('rep');
 }
-const kindLabel = (k) => ({ scenario: 'Scenario', impromptu: 'Impromptu', teachback: 'Teach-back', custom: 'Your prompt', question: 'Tough question', concision: 'Concision gym' }[k] || 'Rep');
+const kindLabel = (k) => ({ scenario: 'Scenario', impromptu: 'Impromptu', teachback: 'Teach-back', custom: 'Your prompt', question: 'Tough question', concision: 'Concision gym', hsia: 'Headline Builder' }[k] || 'Rep');
 
 SHEETS.rep = {
   render() {
@@ -185,7 +185,7 @@ SHEETS.rep = {
     const fn = { brief: repBrief, think: repThink, capture: repCapture, analyzing: repAnalyzing, result: repResult }[r.step];
     return { title, body: fn(r) };
   },
-  mount() { const r = S.rep; if (!r) return; if (r.step === 'think') mountThink(); if (r.step === 'capture') mountCapture(); if (r.step === 'result' && r.autoCoach) { r.autoCoach = false; runCoach(); } },
+  mount() { const r = S.rep; if (!r) return; if (r.step === 'think') mountThink(); if (r.step === 'capture') mountCapture(); if (r.step === 'result') { celebrateRep(r); if (r.autoCoach) { r.autoCoach = false; runCoach(); } } },
 };
 
 function modeSeg(r) {
@@ -366,28 +366,31 @@ function scoreRep(transcript, source, durationSec) {
   const au = r.au && r.au.ok ? r.au : null;
   const ta = transcript && transcript.trim() ? A.analyzeText(transcript, { source, durationSec }) : null;
   const sc = A.score(ta, au, { paceLo: p.paceLo, paceHi: p.paceHi, timeLimit: r.spec.time });
-  if (source === 'typed') { delete sc.delivery; const v = ['clarity', 'concision', 'confidence', 'impact'].map((k) => sc[k]).filter((x) => x != null); sc.overall = v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; }
   r.ta = ta; r.sc = sc;
   const sp = r.spec;
+  const prevPhrases = new Set(); Store.sessions.forEach((x) => { if (!r.session || x.id !== r.session.id) (x.execPhrases || []).forEach((k) => prevPhrases.add(k)); });
   const sess = Object.assign(r.session || {}, {
-    ts: (r.session && r.session.ts) || Date.now(), date: (r.session && r.session.date) || dkey(),
+    v: 2, ts: (r.session && r.session.ts) || Date.now(), date: (r.session && r.session.date) || dkey(),
     kind: sp.kind, refId: sp.refId, title: sp.title, prompt: sp.prompt,
-    spec: { kind: sp.kind, refId: sp.refId, title: sp.title, audience: sp.audience, situation: sp.situation || '', prompt: sp.prompt, criteria: sp.criteria || [], tip: sp.tip || '', time: sp.time, focus: sp.focus || [] },
+    spec: { kind: sp.kind, refId: sp.refId, title: sp.title, audience: sp.audience, situation: sp.situation || '', prompt: sp.prompt, criteria: sp.criteria || [], tip: sp.tip || '', time: sp.time, areas: sp.areas || [] },
     source, durationSec: durationSec ? Math.round(durationSec) : (au ? Math.round(au.activeSpan) : null),
     transcript: ta ? ta.text.slice(0, 20000) : '',
-    metrics: ta ? { words: ta.words, wpm: sc.wpm, fillers: ta.fillers.total, fillersPerMin: ta.fillers.perMin, fillerTypes: ta.fillers.byType.slice(0, 6), hedges: ta.hedges.total, hedgesPer100: ta.hedges.per100, hedgeTypes: ta.hedges.byType.slice(0, 6), bluf: ta.bluf, numbers: ta.numbers, avgSentence: ta.avgSentence, weakEnd: ta.weakEnd, signposts: ta.signposts } : (au ? { words: 0, wpm: sc.wpm } : null),
+    hsia: ta ? Object.assign({}, ta.hsia) : null, execPhrases: ta ? ta.execPhrases : [], weakPhrases: ta ? ta.weakPhrases : [],
+    metrics: ta ? { words: ta.words, wpm: sc.wpm, fillers: ta.fillers.total, fillersPerMin: ta.fillers.perMin, fillerTypes: ta.fillers.byType.slice(0, 6), hedges: ta.hedges.total, hedgesPer100: ta.hedges.per100, hedgeTypes: ta.hedges.byType.slice(0, 6), bluf: ta.bluf, numbers: ta.numbers, avgSentence: ta.avgSentence, weakEnd: ta.weakEnd, signposts: ta.signposts, hsia: ta.hsia } : (au ? { words: 0, wpm: sc.wpm } : null),
     audio: au ? { activeSpan: au.activeSpan, estWpm: au.estWpm, pauses: au.pauses, pitch: { rangeSt: au.pitch.rangeSt, medianHz: au.pitch.medianHz }, upspeak: au.upspeak, volume: au.volume, wave: au.wave } : null,
-    autoScores: { clarity: sc.clarity, concision: sc.concision, confidence: sc.confidence, delivery: sc.delivery, impact: sc.impact, overall: sc.overall },
-    notes: sc.notes, attempt: r.attempt, prevId: r.prev ? r.prev.id : null, prevScore: r.prev && r.prev.scores ? r.prev.scores.overall : null,
+    autoScores: Object.assign({ v: 2 }, ...C.DIMENSIONS.map((d) => ({ [d.id]: sc[d.id] != null ? sc[d.id] : null })), { overall: sc.overall }),
+    notes: sc.notes, attempt: r.attempt, prevId: r.prev ? r.prev.id : null, prevScore: r.prev ? G.scores(r.prev).overall : null,
   });
+  if (sess.coach && sess.coach.hsiaMet) sess.hsia = Object.assign({}, sess.hsia || {}, sess.coach.hsiaMet);
   sess.scores = blendScores(sess.autoScores, sess.coach && sess.coach.scores);
+  r.newPhrases = (sess.execPhrases || []).filter((k) => !prevPhrases.has(k));
   r.session = Store.put('sessions', sess);
 }
 function blendScores(auto, coach) {
-  const out = {};
+  const out = { v: 2 };
   for (const d of C.DIMENSIONS) {
     const a = auto ? auto[d.id] : null, c = coach ? Number(coach[d.id]) : NaN;
-    if (coach && coach[d.id] != null && !isNaN(c)) out[d.id] = a != null ? Math.round(d.id === 'delivery' ? 0.5 * a + 0.5 * c : 0.3 * a + 0.7 * c) : Math.round(c);
+    if (coach && coach[d.id] != null && !isNaN(c)) out[d.id] = a != null ? Math.round(d.id === 'confidence' ? 0.5 * a + 0.5 * c : 0.3 * a + 0.7 * c) : Math.round(c);
     else if (a != null) out[d.id] = a;
   }
   const v = C.DIMENSIONS.map((d) => out[d.id]).filter((x) => x != null);
@@ -403,19 +406,27 @@ function repAnalyzing() {
 }
 
 /* Result rendering, shared by the live result and the history detail view */
+function hsiaLights(h, coachH) {
+  if (!h && !coachH) return '';
+  const src = Object.assign({}, h || {}, coachH ? Object.fromEntries(Object.entries(coachH).map(([k, v]) => [k, v])) : {});
+  const n = C.HSIA.filter((x) => src[x.id]).length;
+  return `<div class="card stack hsia-card"><div class="row between"><span class="eyebrow">Headline → Structure → Implication → Action</span><span class="pill ${n === 4 ? 'good' : n >= 2 ? 'warn' : 'bad'}">${n}/4</span></div>
+    <div class="lights">${C.HSIA.map((x) => `<div class="light ${src[x.id] ? 'on' : ''}"><span class="bulb" aria-hidden="true"></span><span class="ln">${x.name}</span></div>`).join('')}</div>
+    ${n === 4 ? '<p class="small" style="color:var(--good);font-weight:600">Full house: +5 XP</p>' : `<p class="small muted">Missing: ${C.HSIA.filter((x) => !src[x.id]).map((x) => `${x.name.toLowerCase()} (${x.q.toLowerCase().replace('?', '')})`).join('; ')}</p>`}</div>`;
+}
 function resultBody(sess, opts = {}) {
-  const m = sess.metrics || {}, au = sess.audio, sc = sess.scores || {};
-  const p = Store.profile.settings;
+  const m = sess.metrics || {}, au = sess.audio, sc = G.scores(sess);
+  const p = Store.profile.settings, pl = G.plan();
   const lim = sess.spec && sess.spec.time;
   const delta = sess.prevScore != null && sc.overall != null ? sc.overall - sess.prevScore : null;
   const wpmCls = m.wpm ? (m.wpm >= p.paceLo && m.wpm <= p.paceHi ? 'good' : Math.abs(m.wpm - (m.wpm < p.paceLo ? p.paceLo : p.paceHi)) <= 15 ? 'warn' : 'bad') : '';
   const fCls = m.fillersPerMin != null ? (m.fillersPerMin <= 2 ? 'good' : m.fillersPerMin <= 5 ? 'warn' : 'bad') : (m.fillers != null ? (m.fillers <= 1 ? 'good' : m.fillers <= 4 ? 'warn' : 'bad') : '');
   const kp = [];
   if (sess.durationSec) kp.push(['Time', fmtSec(sess.durationSec), lim ? `limit ${fmtSec(lim)}` : '', lim && sess.durationSec > lim * 1.15 ? 'bad' : '']);
-  if (m.wpm) kp.push(['Pace', m.wpm, (m.words ? 'wpm' : 'wpm, estimated') + ` · target ${p.paceLo}–${p.paceHi}`, wpmCls]);
-  if (m.words) kp.push(['Fillers', m.fillers, m.fillersPerMin != null ? `${m.fillersPerMin}/min${sess.source === 'dictation' ? ' (dictation)' : ''}` : `${m.words} words`, fCls]);
+  if (m.wpm) kp.push(['Pace', m.wpm, (m.words ? 'wpm' : 'wpm, est.') + ` · ${p.paceLo}–${p.paceHi}`, wpmCls]);
   if (m.words) kp.push(['Hedges', m.hedges, `${m.hedgesPer100} per 100 words`, m.hedges === 0 ? 'good' : m.hedgesPer100 <= 2 ? 'warn' : 'bad']);
-  if (m.words) kp.push(['Answer first', m.bluf === true ? 'Yes' : m.bluf === false ? 'No' : '—', 'opening sentence', m.bluf === true ? 'good' : m.bluf === false ? 'bad' : '']);
+  if (m.words) kp.push(['Fillers', m.fillers, m.fillersPerMin != null ? `${m.fillersPerMin}/min${sess.source === 'dictation' ? ' (dictation)' : ''}` : `${m.words} words`, fCls]);
+  if (m.words) kp.push(['Words', m.words, `${m.avgSentence} per sentence`, m.avgSentence <= 20 ? 'good' : m.avgSentence <= 26 ? 'warn' : 'bad']);
   if (m.words) kp.push(['Numbers', m.numbers, 'specific figures', m.numbers ? 'good' : '']);
   if (au) {
     kp.push(['Pauses', au.pauses.deliberate, `${au.pauses.deliberatePerMin}/min deliberate`, au.pauses.deliberatePerMin >= 3 ? 'good' : 'warn']);
@@ -423,19 +434,28 @@ function resultBody(sess, opts = {}) {
     if (au.upspeak.pct != null) kp.push(['Rising ends', au.upspeak.pct + '%', 'of phrases', au.upspeak.pct <= 15 ? 'good' : au.upspeak.pct <= 30 ? 'warn' : 'bad']);
   }
   const ta = sess.transcript ? A.analyzeText(sess.transcript, { source: sess.source, durationSec: sess.durationSec }) : null;
+  const stage = sess.coach && sess.coach.stage ? C.STAGES[sess.coach.stage - 1] : null;
+  const phrases = (sess.execPhrases || []).map((id) => C.EXEC_PHRASES.find((x) => x.id === id)).filter(Boolean);
+  const newSet = new Set(opts.newPhrases || []);
+  const mult = sess.mult || 1;
   return `<div class="stack-lg">
     <div class="stack" style="gap:4px"><span class="eyebrow">${esc(kindLabel(sess.kind))}${sess.attempt > 1 ? ` · try ${sess.attempt}` : ''} · ${esc(fmtDate(sess.ts))}</span><h1 class="h2">${esc(sess.title)}</h1></div>
     <div class="card raised stack" style="align-items:center">
-      <div style="width:100%;max-width:320px">${gauge(sc.overall, { label: sess.coach ? 'Presence score · coached' : 'Presence score', animate: opts.animate !== false })}</div>
-      ${delta != null ? `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}${delta} vs last try</span>` : ''}
-      <div style="width:100%">${bars(sc)}</div>
+      <div style="width:100%;max-width:320px">${gauge(sc.overall, { label: sess.coach ? 'Presence · coached' : 'Presence score', animate: opts.animate !== false, base: pl.overall.baseline * 10, target: pl.overall.target * 10 })}</div>
+      <div class="row" style="justify-content:center;gap:8px">${delta != null ? `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}${(delta / 10).toFixed(1)} vs last try</span>` : ''}${stage ? `<span class="pill brass">Sounds like Stage ${stage.id}: ${esc(stage.name)}</span>` : ''}</div>
+      <div style="width:100%">${bars(sc, C.DIMENSIONS, { plan: true })}</div>
     </div>
-    ${kp.length ? `<div class="kpis">${kp.map(([k, v, s, c]) => `<div class="kpi ${c}"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`).join('')}</div>` : ''}
+    ${hsiaLights(sess.hsia)}
+    ${phrases.length || (sess.weakPhrases || []).length ? `<div class="card stack"><span class="eyebrow">Executive language</span>
+      ${phrases.length ? `<div class="chips">${phrases.map((ph) => `<span class="chip on">${newSet.has(ph.id) ? '<b>New</b> ' : ''}${esc(ph.say)}</span>`).join('')}</div><p class="small muted">+${Math.min(9, phrases.length * 3)} XP for executive phrases</p>` : ''}
+      ${(sess.weakPhrases || []).length ? `<div class="stack">${sess.weakPhrases.map((w) => `<div class="cmp"><span class="from">${esc(w)}</span></div>`).join('')}<p class="small muted">Phrases you're retiring. Swap in one from your arsenal.</p></div>` : ''}</div>` : ''}
+    ${kp.length ? `<div class="kpis">${kp.map(([k, v, s2, c]) => `<div class="kpi ${c}"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s2)}</div></div>`).join('')}</div>` : ''}
     ${au && au.wave ? `<div class="card stack" style="gap:6px"><span class="eyebrow">Your recording</span>${waveSvg(au.wave)}</div>` : ''}
-    ${sess.notes && sess.notes.length ? `<div class="card stack"><span class="eyebrow">What the numbers say</span>${sess.notes.map((n) => `<div class="crit partly">${icon('target')}<span>${esc(n.text)}</span></div>`).join('')}</div>` : ''}
+    ${sess.notes && sess.notes.length ? `<div class="card stack"><span class="eyebrow">What the numbers say</span>${sess.notes.map((n) => `<div class="crit partly">${n.area ? `<span class="area-dot">${n.area}</span>` : icon('target')}<span>${esc(n.text)}</span></div>`).join('')}</div>` : ''}
     ${opts.coachHtml != null ? opts.coachHtml : sess.coach ? coachCard(sess.coach) : ''}
-    ${ta ? `<div class="card stack"><div class="row between"><span class="eyebrow">Transcript</span><div class="legend"><span><i style="background:var(--bad)"></i>Filler</span><span><i style="background:var(--warn)"></i>Hedge</span><span><i style="background:var(--good)"></i>Strong</span></div></div><div class="transcript">${A.highlight(ta)}</div></div>` : `<div class="note">${icon('info')}<span>No transcript, so content wasn't scored. Add one below to score clarity, concision, confidence and impact.</span></div>`}
+    ${ta ? `<div class="card stack"><div class="row between"><span class="eyebrow">Transcript</span><div class="legend"><span><i style="background:var(--bad)"></i>Filler</span><span><i style="background:var(--warn)"></i>Hedge</span><span><i style="background:var(--good)"></i>Strong</span></div></div><div class="transcript">${A.highlight(ta)}</div></div>` : `<div class="note">${icon('info')}<span>No transcript, so content wasn't scored. Add one below to score framing, clarity, conciseness, assertiveness and decision leadership.</span></div>`}
     ${opts.editable ? `<details class="fold" ${ta ? '' : 'open'}><summary>${ta ? 'Fix the transcript and re-score' : 'Add a transcript'}${icon('chev')}</summary><div class="fold-body stack"><textarea class="input" id="reText" placeholder="Paste or dictate what you said">${esc(sess.transcript || '')}</textarea><button class="btn secondary" data-act="rescore">Re-score</button></div></details>` : ''}
+    <div class="xp-line"><span class="xp-pop">+${G.xpOf(sess)} XP</span>${mult > 1 ? ` <span class="pill brass">×${mult} streak</span>` : ''}</div>
   </div>`;
 }
 function coachCard(c) {
@@ -443,9 +463,11 @@ function coachCard(c) {
     <div class="coach-head"><span class="badge">${icon('spark')}</span><span class="eyebrow">Coach's read</span></div>
     ${c.headline ? `<p class="headline">${esc(c.headline)}</p>` : ''}
     ${c.criteria && c.criteria.length ? `<div class="criteria">${c.criteria.map((x) => { const m = String(x.met).toLowerCase(); const k = m === 'yes' || m === 'true' ? 'yes' : m === 'partly' ? 'partly' : 'no'; return `<div class="crit ${k}">${icon(k)}<span>${esc(x.criterion)}</span></div>`; }).join('')}</div>` : ''}
+    ${c.hsiaNotes && Object.keys(c.hsiaNotes).length ? `<div class="stack"><span class="eyebrow">Framework</span>${C.HSIA.filter((x) => c.hsiaNotes[x.id]).map((x) => `<div class="crit ${c.hsiaMet && c.hsiaMet[x.id] ? 'yes' : 'no'}">${icon(c.hsiaMet && c.hsiaMet[x.id] ? 'yes' : 'no')}<span><b>${x.name}.</b> ${esc(c.hsiaNotes[x.id])}</span></div>`).join('')}</div>` : ''}
     ${c.strengths && c.strengths.length ? `<div class="stack"><span class="eyebrow">Keep</span>${c.strengths.map((s) => `<div class="better">${esc(s)}</div>`).join('')}</div>` : ''}
-    ${c.fixes && c.fixes.length ? `<div class="stack"><span class="eyebrow">Fix</span>${c.fixes.map((f) => `<div class="fix"><span class="issue">${esc(f.issue)}</span>${f.quote ? `<div class="quote">"${esc(f.quote)}"</div>` : ''}${f.why ? `<div class="small muted">${esc(f.why)}</div>` : ''}${f.try ? `<div class="better">${esc(f.try)}</div>` : ''}</div>`).join('')}</div>` : ''}
-    ${c.rewrite ? `<div class="stack"><div class="row between"><span class="eyebrow">Executive version</span><button class="link" data-act="copy-rewrite">${icon('copy', '')} Copy</button></div><div class="better" id="rewriteText" style="font-size:15.5px;line-height:1.6">${esc(c.rewrite)}</div></div>` : ''}
+    ${c.fixes && c.fixes.length ? `<div class="stack"><span class="eyebrow">Fix</span>${c.fixes.map((f) => `<div class="fix"><span class="issue">${f.area && C.area(f.area) ? `<span class="area-dot">${f.area}</span> ` : ''}${esc(f.issue)}</span>${f.quote ? `<div class="quote">"${esc(f.quote)}"</div>` : ''}${f.why ? `<div class="small muted">${esc(f.why)}</div>` : ''}${f.try ? `<div class="better">${esc(f.try)}</div>` : ''}</div>`).join('')}</div>` : ''}
+    ${c.summary2 ? `<div class="stack"><span class="eyebrow">Two-sentence executive summary</span><div class="better" style="font-size:16px;font-weight:500">${esc(c.summary2)}</div></div>` : ''}
+    ${c.rewrite ? `<div class="stack"><div class="row between"><span class="eyebrow">Executive version</span><button class="link" data-act="copy-rewrite">${icon('copy')}Copy</button></div><div class="better" id="rewriteText" style="font-size:15.5px;line-height:1.6">${esc(c.rewrite)}</div></div>` : ''}
     ${c.next_rep ? `<div class="note warn">${icon('target')}<span><b>Next try:</b> ${esc(c.next_rep)}</span></div>` : ''}
   </div>`;
 }
@@ -459,9 +481,16 @@ function liveCoachHtml(r) {
 }
 function repResult(r) {
   const sess = r.session;
-  return resultBody(sess, { coachHtml: liveCoachHtml(r), editable: true }) + `
-    <div class="actions" style="margin-top:18px"><button class="btn" data-act="runback">${icon('refresh')}Run it back</button><button class="btn secondary" data-act="sheet-close">Done</button></div>
-    <p class="small muted" style="margin-top:10px;text-align:center"><span class="xp-pop">+${sessionXp(sess)} XP</span> · saved to your history</p>`;
+  return resultBody(sess, { coachHtml: liveCoachHtml(r), editable: true, newPhrases: r.newPhrases }) + `
+    <div class="actions" style="margin-top:18px"><button class="btn" data-act="runback">${icon('refresh')}Run it back</button><button class="btn secondary" data-act="sheet-close">Done</button></div>`;
+}
+function celebrateRep(r) {
+  if (!r || !r.session || r.celebrated) return;
+  r.celebrated = true;
+  const h = r.session.hsia || {};
+  if (h.headline && h.structure && h.implication && h.action) Celebrate.push({ kind: 'full', title: 'Full house', sub: 'Headline, Structure, Implication, Action. All four.', xp: 5 });
+  for (const id of r.newPhrases || []) { const ph = C.EXEC_PHRASES.find((x) => x.id === id); if (ph) toast(`New phrase collected: ${ph.say}`, 3200); }
+  chime('tick');
 }
 
 let coachCtl = null;
@@ -472,7 +501,7 @@ async function runCoach() {
   coachCtl = new AbortController();
   const sess = r.session;
   try {
-    const prompt = AI.feedbackPrompt(Store.profile, r.spec, { transcript: sess.transcript, source: sess.source, metrics: Object.assign({ durationSec: sess.durationSec }, sess.metrics || {}), audio: r.au, attempt: r.attempt, prevScore: sess.prevScore, hasImages: !!(r.frames && r.frames.length) });
+    const prompt = AI.feedbackPrompt(Store.profile, r.spec, { transcript: sess.transcript, source: sess.source, metrics: Object.assign({ durationSec: sess.durationSec, hsia: sess.hsia }, sess.metrics || {}), audio: r.au, attempt: r.attempt, prevScore: sess.prevScore, hasImages: !!(r.frames && r.frames.length) });
     const opts = { signal: coachCtl.signal, modelTier: 'default' };
     if (r.frames && r.frames.length) opts.images = r.frames.map((f) => f.blob);
     const res = await AI.json(prompt, opts);
@@ -480,6 +509,7 @@ async function runCoach() {
     const coach = normalizeCoach(res);
     if (!S.rep || S.rep.session !== sess) return;
     sess.coach = coach;
+    if (coach.hsiaMet) sess.hsia = Object.assign({}, sess.hsia || {}, coach.hsiaMet);
     sess.scores = blendScores(sess.autoScores, coach.scores);
     r.session = Store.put('sessions', sess);
     r.coachState = 'done';
@@ -492,18 +522,19 @@ async function runCoach() {
   if (S.sheet && S.sheet.type === 'rep') Sheet.render(true);
 }
 function normalizeCoach(res) {
-  const num = (v) => (v == null || v === '' || isNaN(Number(v)) ? null : A.clamp(Math.round(Number(v)), 0, 100));
+  const num = (v) => (v == null || v === '' || isNaN(Number(v)) ? null : A.clamp(Math.round(Number(v) * 10), 0, 100));
   const sc = res.scores || {};
   const arr = (a) => (Array.isArray(a) ? a : []);
+  const scores = { v: 2 }; for (const d of C.DIMENSIONS) scores[d.id] = num(sc[d.id]);
+  const h = res.hsia || {}, hsiaMet = {}, hsiaNotes = {};
+  for (const x of C.HSIA) if (h[x.id]) { const v = h[x.id]; hsiaMet[x.id] = typeof v === 'object' ? !!v.met : !!v; if (typeof v === 'object' && v.note) hsiaNotes[x.id] = String(v.note); }
   return {
-    headline: String(res.headline || ''),
-    scores: { clarity: num(sc.clarity), concision: num(sc.concision), confidence: num(sc.confidence), delivery: num(sc.delivery), impact: num(sc.impact), composure: num(sc.composure) },
+    headline: String(res.headline || ''), scores, stage: [1, 2, 3].includes(Number(res.stage)) ? Number(res.stage) : null,
+    hsiaMet: Object.keys(hsiaMet).length ? hsiaMet : null, hsiaNotes,
     criteria: arr(res.criteria).slice(0, 6).map((c) => ({ criterion: String(c.criterion || ''), met: String(c.met || 'no') })),
     strengths: arr(res.strengths).slice(0, 2).map(String),
-    fixes: arr(res.fixes).slice(0, 3).map((f) => ({ issue: String(f.issue || ''), quote: String(f.quote || ''), why: String(f.why || ''), try: String(f.try || '') })),
-    rewrite: String(res.rewrite || ''),
-    next_rep: String(res.next_rep || ''),
-    skills: arr(res.skills).filter((s) => C.skill(s.id)).slice(0, 5).map((s) => ({ id: s.id, rating: A.clamp(Number(s.rating) || 3, 1, 5) })),
+    fixes: arr(res.fixes).slice(0, 3).map((f) => ({ area: /^[A-E]$/.test(f.area) ? f.area : '', issue: String(f.issue || ''), quote: String(f.quote || ''), why: String(f.why || ''), try: String(f.try || '') })),
+    summary2: String(res.summary2 || ''), rewrite: String(res.rewrite || ''), next_rep: String(res.next_rep || ''),
   };
 }
 
@@ -514,7 +545,8 @@ SHEETS.session = {
     if (!s) return { title: 'Session', body: '<p class="muted">This session was deleted.</p>' };
     if (s.kind === 'spar') return { title: s.title, body: sparDebriefBody(s) + sessionFooter(s) };
     if (s.kind === 'visual') return { title: s.title, body: visualResultBody(s.coach, s) + sessionFooter(s) };
-    if (s.kind === 'drill') return { title: s.title, body: `<div class="stack"><span class="eyebrow">Drill · ${esc(fmtDate(s.ts))}</span><h1 class="h2">${esc(s.title)}</h1><p class="muted">${esc(s.minutes || 2)} minutes.</p></div>` + sessionFooter(s) };
+    if (['drill', 'game', 'quest', 'bonus'].includes(s.kind)) return { title: s.title, body: `<div class="stack"><span class="eyebrow">${esc(fmtDate(s.ts))}</span><h1 class="h2">${esc(s.title)}</h1>${s.kind === 'game' ? `<p>Score <b class="mono">${s.score}</b> · accuracy ${s.accuracy}%</p>` : ''}${s.note ? `<p class="muted">${esc(s.note)}</p>` : ''}${s.kind === 'drill' ? `<p class="muted">${esc(s.minutes || 2)} minutes.</p>` : ''}<p class="xp-pop">+${G.xpOf(s)} XP</p></div>` + sessionFooter(s) };
+    if (s.kind === 'hsia') { const a = s.answer || {}; return { title: s.title, body: `<div class="stack-lg"><div class="stack"><span class="eyebrow">Headline Builder · ${esc(fmtDate(s.ts))}</span><h1 class="h2">${esc(s.title)}</h1></div>${hsiaLights(s.hsia)}<div class="card stack"><div class="row between"><span class="eyebrow">Your answer</span><b class="mono">${s10(G.scores(s).overall)}</b></div><div><b>${esc(a.headline || '')}</b></div>${(a.structure || []).filter(Boolean).map((x) => `<div>• ${esc(x)}</div>`).join('')}<div>${esc(a.implication || '')}</div><div><b>${esc(a.action || '')}</b></div></div>${s.coach && s.coach.summary2 ? `<div class="card stack"><span class="eyebrow">Two-sentence version</span><div class="better">${esc(s.coach.summary2)}</div></div>` : ''}<button class="btn" data-act="open" data-sheet="hsia" data-id="${esc(s.refId)}">${icon('refresh')}Try this case again</button></div>` + sessionFooter(s) }; }
     return { title: s.title, body: resultBody(s, { animate: true }) + sessionFooter(s) };
   },
 };

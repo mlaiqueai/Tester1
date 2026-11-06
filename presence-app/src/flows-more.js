@@ -5,7 +5,7 @@
 /* ---------------- Spar ---------------- */
 function openSpar(personaId, preset = {}) {
   const persona = C.PERSONAS.find((p) => p.id === personaId) || C.PERSONAS[0];
-  S.spar = { persona, ctx: preset.ctx || persona.defaultContext, difficulty: preset.difficulty || 'tough', rounds: preset.rounds || 5, step: 'setup', convo: [], waiting: false, err: '', offline: !AI.ready, debrief: null, session: null, voice: Store.profile.settings.voice };
+  S.spar = { persona, ctx: preset.ctx || persona.defaultContext, difficulty: preset.boss ? 'brutal' : preset.difficulty || 'tough', rounds: preset.boss ? 5 : preset.rounds || 5, boss: !!preset.boss, bossWeek: preset.boss ? G.isoWeek().key : null, step: 'setup', convo: [], waiting: false, err: '', offline: !AI.ready, debrief: null, session: null, voice: Store.profile.settings.voice };
   Sheet.open('spar');
 }
 function speak(text) {
@@ -27,7 +27,7 @@ SHEETS.spar = {
     if (!sp) return { title: '', body: '' };
     const p = sp.persona;
     const right = sp.step === 'chat' ? `<button class="icon-btn plain" data-act="spar-voice" aria-label="${sp.voice ? 'Mute questions' : 'Read questions aloud'}">${icon(sp.voice ? 'volume' : 'mute')}</button>` : '';
-    if (sp.step === 'setup') return { title: p.name, body: sparSetup(sp) };
+    if (sp.step === 'setup') return { title: sp.boss ? `Boss: ${p.name}` : p.name, body: sparSetup(sp) };
     if (sp.step === 'chat') return { title: p.name, right, body: sparChat(sp) };
     return { title: `Debrief: ${p.name}`, body: sp.session ? sparDebriefBody(sp.session) + `<div class="actions" style="margin-top:18px"><button class="btn" data-act="spar-again">${icon('refresh')}Spar again</button><button class="btn secondary" data-act="sheet-close">Done</button></div>` : sparDebriefLoading(sp) };
   },
@@ -45,10 +45,11 @@ function sparSetup(sp) {
   const p = sp.persona;
   return `<div class="stack-lg">
     <div class="row nowrap" style="gap:14px"><span class="mono-mark" style="width:52px;height:52px;border-radius:50%;background:var(--deep);color:var(--brass-bright);font-family:var(--font-display);font-weight:700;font-size:22px;display:grid;place-items:center;flex:none">${esc(p.name.replace(/^The /, '')[0])}</span><div><h1 class="h2">${esc(p.name)}</h1><div class="muted">${esc(p.role)}</div></div></div>
+    ${sp.boss ? `<div class="note warn">${icon('medal')}<span><b>Boss of the week.</b> Brutal difficulty, five questions. Score 8.0 or better to win +100 XP.</span></div>` : ''}
     <p>${esc(p.style)}</p>
     <label class="field">The situation<textarea class="input" id="sparCtx" rows="4">${esc(sp.ctx)}</textarea></label>
-    <div class="stack"><span class="eyebrow">Difficulty</span><div class="seg full" role="group">${['warm', 'tough', 'brutal'].map((d) => `<button data-act="spar-diff" data-v="${d}" aria-pressed="${sp.difficulty === d}">${d[0].toUpperCase() + d.slice(1)}</button>`).join('')}</div><p class="small muted">${esc(C.DIFFICULTY[sp.difficulty])}</p></div>
-    <div class="stack"><span class="eyebrow">Questions</span><div class="seg full" role="group">${[3, 5, 7].map((n) => `<button data-act="spar-rounds" data-v="${n}" aria-pressed="${sp.rounds === n}">${n}</button>`).join('')}</div></div>
+    ${sp.boss ? '' : `<div class="stack"><span class="eyebrow">Difficulty</span><div class="seg full" role="group">${['warm', 'tough', 'brutal'].map((d) => `<button data-act="spar-diff" data-v="${d}" aria-pressed="${sp.difficulty === d}">${d[0].toUpperCase() + d.slice(1)}</button>`).join('')}</div><p class="small muted">${esc(C.DIFFICULTY[sp.difficulty])}</p></div>
+    <div class="stack"><span class="eyebrow">Questions</span><div class="seg full" role="group">${[3, 5, 7].map((n) => `<button data-act="spar-rounds" data-v="${n}" aria-pressed="${sp.rounds === n}">${n}</button>`).join('')}</div></div>`}
     ${sp.offline ? `<div class="note">${icon('info')}<span>Claude isn't available in this view, so you'll get ${esc(p.name)}'s question bank without live follow-ups. Your answers are still scored.</span></div>` : `<div class="note">${icon('volume')}<span>Questions are read aloud${window.speechSynthesis ? '' : ' where your browser supports it'}. Answer out loud with your keyboard's dictation, or type.</span></div>`}
     <button class="btn block" data-act="spar-start">${icon('play')}Start</button>
   </div>`;
@@ -126,8 +127,7 @@ async function sparDebrief() {
   const typedAll = answers.every((t) => t.metrics.typed);
   const ta = A.analyzeText(all, { source: typedAll ? 'typed' : 'dictation', durationSec: secs || null });
   const sc = A.score(ta, null, { paceLo: Store.profile.settings.paceLo, paceHi: Store.profile.settings.paceHi });
-  if (typedAll) delete sc.delivery;
-  const auto = { clarity: sc.clarity, concision: sc.concision, confidence: sc.confidence, delivery: sc.delivery, impact: sc.impact };
+  const auto = Object.assign({ v: 2 }, ...C.DIMENSIONS.map((d) => ({ [d.id]: sc[d.id] != null ? sc[d.id] : null })));
   let coach = null;
   if (!sp.offline && AI.ready) {
     try {
@@ -138,14 +138,17 @@ async function sparDebrief() {
   if (!S.spar) return;
   const sess = {
     ts: Date.now(), date: dkey(), kind: 'spar', refId: sp.persona.id, title: `Spar: ${sp.persona.name}`,
-    persona: sp.persona.id, difficulty: sp.difficulty, context: sp.ctx, convo: sp.convo, source: typedAll ? 'typed' : 'dictation', durationSec: secs || null,
+    v: 2, persona: sp.persona.id, difficulty: sp.difficulty, context: sp.ctx, convo: sp.convo, boss: sp.boss, bossWeek: sp.bossWeek, source: typedAll ? 'typed' : 'dictation', durationSec: secs || null,
     transcript: all.slice(0, 20000),
     metrics: { words: ta.words, wpm: sc.wpm, fillers: ta.fillers.total, fillersPerMin: ta.fillers.perMin, fillerTypes: ta.fillers.byType.slice(0, 6), hedges: ta.hedges.total, hedgesPer100: ta.hedges.per100, hedgeTypes: ta.hedges.byType.slice(0, 6), bluf: null, numbers: ta.numbers, avgSentence: ta.avgSentence },
     autoScores: auto, coach, notes: sc.notes,
   };
   sess.scores = blendScores(auto, coach && coach.scores);
+  if (sp.boss) sess.won = sess.scores.overall != null && sess.scores.overall >= 80;
   sp.session = Store.put('sessions', sess);
   Sheet.render();
+  if (sp.boss && sess.won) Celebrate.push({ kind: 'boss', title: `${sp.persona.name} defeated`, sub: `You scored ${s10(sess.scores.overall)} at Brutal difficulty.`, xp: 100 });
+  else if (sp.boss) toast(`Boss scored ${s10(sess.scores.overall)}. You need 8.0. Rematch any time this week.`, 4200);
 }
 function normalizeDebrief(res) {
   const base = normalizeCoach(res);
@@ -162,8 +165,9 @@ function sparDebriefBody(s) {
   const persona = C.PERSONAS.find((p) => p.id === s.persona) || { name: 'Interviewer' };
   const answers = (s.convo || []).filter((t) => t.role === 'me');
   return `<div class="stack-lg">
-    <div class="stack" style="gap:4px"><span class="eyebrow">Spar · ${esc(s.difficulty || '')} · ${esc(fmtDate(s.ts))}</span><h1 class="h2">${esc(persona.name)}</h1></div>
-    <div class="card raised stack" style="align-items:center"><div style="width:100%;max-width:320px">${gauge(s.scores && s.scores.overall, { label: 'Spar score' })}</div><div style="width:100%">${bars(s.scores || {})}</div></div>
+    <div class="stack" style="gap:4px"><span class="eyebrow">${s.boss ? 'Boss fight' : 'Spar'} · ${esc(s.difficulty || '')} · ${esc(fmtDate(s.ts))}</span><h1 class="h2">${esc(persona.name)}</h1></div>
+    ${s.boss ? `<div class="note ${s.won ? '' : 'warn'}">${icon('medal')}<span>${s.won ? '<b>Boss defeated.</b> +100 XP.' : '<b>Not this time.</b> You need 8.0 to win. Rematch any time this week.'}</span></div>` : ''}
+    <div class="card raised stack" style="align-items:center"><div style="width:100%;max-width:320px">${gauge(G.scores(s).overall, { label: s.boss ? 'Boss score' : 'Spar score', base: G.plan().overall.baseline * 10, target: 80 })}</div>${c && c.stage ? `<span class="pill brass">Sounded like Stage ${c.stage}: ${esc(C.STAGES[c.stage - 1].name)}</span>` : ''}<div style="width:100%">${bars(G.scores(s), C.DIMENSIONS, { plan: true })}</div></div>
     ${c ? `<div class="card coach stack-lg"><div class="coach-head"><span class="badge">${icon('spark')}</span><span class="eyebrow">Debrief</span></div>
       ${c.headline ? `<p class="headline">${esc(c.headline)}</p>` : ''}
       ${c.strengths && c.strengths.length ? `<div class="stack"><span class="eyebrow">Keep</span>${c.strengths.map((x) => `<div class="better">${esc(x)}</div>`).join('')}</div>` : ''}
@@ -199,7 +203,8 @@ SHEETS.drill = {
     const w = C.WARMUPS.find((x) => x.id === d.id) || { name: 'Pre-game routine', why: 'Arrive calm, grounded and clear.' };
     const head = `<div class="stack" style="gap:4px"><span class="eyebrow">Drill</span><h1 class="h1">${esc(w.name)}</h1><p class="muted">${esc(w.why)}</p></div>`;
     const body = ({ breath: drillBreath, vocal: drillSteps, pregame: drillSteps, enunciation: drillEnunciation, 'pause-ladder': drillLines, inflection: drillLines, swaps: drillSwaps, pace: drillPace, concision: drillConcision }[d.id] || (() => ''))(d);
-    return { title: w.name, body: `<div class="stack-lg">${head}${body}</div>` };
+    const during = d.id === 'pregame' ? `<div class="card stack"><span class="eyebrow">During the meeting</span>${C.OPERATING.during.map((x) => `<div class="crit yes">${icon('target')}<span>${esc(x)}</span></div>`).join('')}<span class="eyebrow" style="margin-top:6px">Have these ready</span><div class="chips">${['recommend', 'decision', 'summary'].map((id) => `<span class="chip">${esc(C.EXEC_PHRASES.find((x) => x.id === id).say)}</span>`).join('')}</div></div>` : '';
+    return { title: w.name, body: `<div class="stack-lg">${head}${body}${during}</div>` };
   },
   mount() { const d = S.drill; if (d && d.id === 'concision') mountConcision(); },
 };
@@ -328,10 +333,10 @@ async function concisionCheck() {
   const n = ta.words, ok = n <= ex.budget;
   const sc = A.score(ta, null, {});
   const concision = Math.round(A.clamp(100 - Math.max(0, n - ex.budget) * 3 - ta.hedges.total * 6 - ta.fillers.total * 6, 20, 100));
-  const scores = { clarity: sc.clarity, concision, confidence: sc.confidence, impact: sc.impact };
-  const v = Object.values(scores).filter((x) => x != null); scores.overall = Math.round(v.reduce((a, b) => a + b, 0) / v.length);
+  const scores = { v: 2, clarity: sc.clarity, concision, assertive: sc.assertive, framing: sc.framing };
+  const v = ['clarity', 'concision', 'assertive', 'framing'].map((k) => scores[k]).filter((x) => x != null); scores.overall = Math.round(v.reduce((a, b) => a + b, 0) / v.length);
   Store.put('sessions', { ts: Date.now(), date: dkey(), kind: 'concision', refId: String(d.i % C.CONCISION_GYM.length), title: 'Concision gym', prompt: ex.long, transcript: txt, source: 'typed', metrics: { words: n, fillers: ta.fillers.total, fillerTypes: ta.fillers.byType, hedges: ta.hedges.total, hedgesPer100: ta.hedges.per100, hedgeTypes: ta.hedges.byType, bluf: ta.bluf, numbers: ta.numbers, avgSentence: ta.avgSentence }, scores, autoScores: scores, notes: sc.notes });
-  d.out = `<div class="card stack"><div class="row between"><span class="eyebrow">Result</span><span class="pill ${scoreClass(scores.overall)}">${scores.overall}</span></div>
+  d.out = `<div class="card stack"><div class="row between"><span class="eyebrow">Result</span><span class="pill ${scoreClass(scores.overall)}">${s10(scores.overall)}</span></div>
     <div>${ok ? `${icon('check')} ${n} words: inside the budget.` : `${n} words: ${n - ex.budget} over. Cut again.`}</div>
     <div class="small muted">${ta.bluf === true ? 'Leads with the answer.' : 'Try putting the answer in the first sentence.'} ${ta.hedges.total ? `${ta.hedges.total} hedge${ta.hedges.total > 1 ? 's' : ''} left.` : 'No hedges.'}</div>
     <div class="transcript">${A.highlight(ta)}</div></div>`;
@@ -376,7 +381,7 @@ SHEETS.prep = {
       <label class="field">Meeting<input class="input" id="pr-title" value="${esc(f.title || '')}" placeholder="e.g. IC: Series B in transplant diagnostics"></label>
       <label class="field">Audience<select class="input" id="pr-aud">${PREP_AUDIENCES.map((a) => `<option ${f.audience === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
       <label class="field">Time you'll have<select class="input" id="pr-time">${['5 minutes', '10 minutes', '15 minutes', '30 minutes', '60 minutes'].map((a) => `<option ${f.time === a ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
-      <label class="field">What do you want them to decide or do?<textarea class="input" id="pr-obj" rows="2" style="min-height:70px" placeholder="e.g. Approve $15M at a $120M pre-money">${esc(f.objective || '')}</textarea></label>
+      <label class="field">Intended outcome: what should they decide or do?<textarea class="input" id="pr-obj" rows="2" style="min-height:70px" placeholder="e.g. Approve $15M at a $120M pre-money">${esc(f.objective || '')}</textarea></label>
       <label class="field">Key facts and numbers<textarea class="input" id="pr-facts" placeholder="Revenue, growth, coverage status, risks, comparables…">${esc(f.facts || '')}</textarea></label>
       <label class="field">What worries you?<textarea class="input" id="pr-worry" rows="2" style="min-height:70px" placeholder="e.g. They'll say the valuation is rich">${esc(f.worries || '')}</textarea></label>
       ${S.tool && S.tool.err ? `<div class="note warn">${icon('info')}<span>${esc(S.tool.err)}</span></div>` : ''}
@@ -388,11 +393,12 @@ function prepView(pr) {
   const r = pr.result || {};
   return `<div class="stack-lg">
     <div class="stack" style="gap:4px"><span class="eyebrow">${esc(pr.audience)} · ${esc(pr.time || '')}</span><h1 class="h2">${esc(pr.title)}</h1></div>
-    ${r.key_message ? `<div class="prompt-box"><span class="eyebrow">Key message</span>${esc(r.key_message)}</div>` : ''}
+    ${r.key_message ? `<div class="prompt-box"><span class="eyebrow">Central message</span>${esc(r.key_message)}</div>` : ''}
+    ${r.summary2 ? `<div class="card stack"><span class="eyebrow">Two-sentence executive summary</span><div class="better" style="font-size:16px">${esc(r.summary2)}</div></div>` : ''}
     ${r.opening ? `<div class="card stack"><span class="eyebrow">Open with</span><div class="better" style="font-size:16px">${esc(r.opening)}</div><div><button class="btn sm" data-act="prep-open" data-id="${pr.id}">${icon('mic')}Rehearse the opening</button></div></div>` : ''}
-    ${r.points && r.points.length ? `<div class="card stack"><span class="eyebrow">Three points</span>${r.points.map((p, i) => `<div class="fix" ${i ? '' : 'style="border-top:0;padding-top:0"'}><span class="issue">${esc(p.point)}</span><span class="small muted">${esc(p.proof)}</span></div>`).join('')}</div>` : ''}
+    ${r.points && r.points.length ? `<div class="card stack"><span class="eyebrow">Three supporting points</span>${r.points.map((p, i) => `<div class="fix" ${i ? '' : 'style="border-top:0;padding-top:0"'}><span class="issue">${esc(p.point)}</span><span class="small muted">${esc(p.proof)}</span></div>`).join('')}${r.implication ? `<span class="eyebrow">Implication</span><div>${esc(r.implication)}</div>` : ''}</div>` : ''}
     ${r.questions && r.questions.length ? `<div class="section"><h2 class="h3">Tough questions</h2>${r.questions.map((q, i) => `<details class="fold"><summary><span>${esc(q.q)}</span>${icon('chev')}</summary><div class="fold-body stack"><div class="better">${esc(q.a)}</div><div><button class="btn secondary sm" data-act="prep-q" data-id="${pr.id}" data-i="${i}">${icon('mic')}Practice answering</button></div></div></details>`).join('')}</div>` : ''}
-    ${r.ask ? `<div class="card stack"><span class="eyebrow">The ask</span><div>${esc(r.ask)}</div>${r.close ? `<span class="eyebrow">Close</span><div>${esc(r.close)}</div>` : ''}</div>` : ''}
+    ${r.ask ? `<div class="card stack"><span class="eyebrow">The decision required</span><div>${esc(r.ask)}</div>${r.close ? `<span class="eyebrow">Close</span><div>${esc(r.close)}</div>` : ''}</div>` : ''}
     ${r.watch_outs && r.watch_outs.length ? `<div class="note warn">${icon('target')}<span>${r.watch_outs.map(esc).join('<br>')}</span></div>` : ''}
     ${!pr.result ? `<div class="note">${icon('info')}<span>Saved as a template. Rehearse your objective as an opening, and use the Spar tab to drill likely questions.</span></div><button class="btn" data-act="prep-open" data-id="${pr.id}">${icon('mic')}Rehearse your opening</button>` : ''}
     <div class="actions"><button class="btn deep" data-act="prep-spar" data-id="${pr.id}">${icon('spar')}Spar on this meeting</button><button class="btn secondary" data-act="prep-edit" data-id="${pr.id}">Edit</button></div>
@@ -411,7 +417,7 @@ async function prepGo(id) {
   try {
     const res = await AI.json(AI.prepPrompt(Store.profile, f), { modelTier: 'default' });
     const arr = (a) => (Array.isArray(a) ? a : []);
-    item.result = { key_message: String(res.key_message || ''), opening: String(res.opening || ''), points: arr(res.points).slice(0, 3).map((p) => ({ point: String(p.point || ''), proof: String(p.proof || '') })), questions: arr(res.questions).slice(0, 5).map((q) => ({ q: String(q.q || ''), a: String(q.a || '') })), ask: String(res.ask || ''), close: String(res.close || ''), watch_outs: arr(res.watch_outs).slice(0, 3).map(String) };
+    item.result = { key_message: String(res.key_message || ''), summary2: String(res.summary2 || ''), implication: String(res.implication || ''), opening: String(res.opening || ''), points: arr(res.points).slice(0, 3).map((p) => ({ point: String(p.point || ''), proof: String(p.proof || '') })), questions: arr(res.questions).slice(0, 5).map((q) => ({ q: String(q.q || ''), a: String(q.a || '') })), ask: String(res.ask || ''), close: String(res.close || ''), watch_outs: arr(res.watch_outs).slice(0, 3).map(String) };
     const saved = Store.put('preps', item);
     S.tool = null;
     if (S.sheet && S.sheet.type === 'prep') Sheet.open('prep', { id: saved.id });
@@ -445,6 +451,7 @@ SHEETS.sharpen = {
       ${t.err ? `<div class="note warn">${icon('info')}<span>${esc(t.err)}</span></div>` : ''}
       ${t.ta ? `<div class="card stack"><div class="row between"><span class="eyebrow">Your version</span><span class="pill">${t.ta.words} words</span></div><div class="transcript">${A.highlight(t.ta)}</div><div class="small muted">${t.ta.hedges.total} hedges · ${t.ta.fillers.total} fillers · ${t.ta.bluf === true ? 'answer first' : 'answer not first'}</div></div>` : ''}
       ${res ? `<div class="card coach stack"><div class="row between"><span class="eyebrow">Sharpened</span><span class="pill good">${A.wordList(res.sharpened).length} words</span></div><div class="better" id="shOut" style="font-size:16px;line-height:1.6;white-space:pre-wrap">${esc(res.sharpened)}</div>
+        ${res.summary2 ? `<span class="eyebrow">Two-sentence version</span><div class="better">${esc(res.summary2)}</div>` : ''}
         ${res.changes && res.changes.length ? `<div class="stack">${res.changes.map((c) => `<div class="crit yes">${icon('yes')}<span>${esc(c)}</span></div>`).join('')}</div>` : ''}
         <div class="actions"><button class="btn secondary" data-act="sh-copy">${icon('copy')}Copy</button><button class="btn" data-act="sh-rehearse">${icon('mic')}Rehearse it</button></div></div>` : ''}
     </div>` };
@@ -459,7 +466,7 @@ async function sharpenGo() {
   t.busy = true; Sheet.render(true);
   try {
     const res = await AI.json(AI.sharpenPrompt(Store.profile, text, t.aud, t.mode), { modelTier: 'default' });
-    t.res = { sharpened: String(res.sharpened || ''), changes: (Array.isArray(res.changes) ? res.changes : []).slice(0, 3).map(String) };
+    t.res = { sharpened: String(res.sharpened || ''), summary2: String(res.summary2 || ''), changes: (Array.isArray(res.changes) ? res.changes : []).slice(0, 3).map(String) };
   } catch (e) { t.err = AI.errorText(e); }
   t.busy = false;
   if (S.sheet && S.sheet.type === 'sharpen') Sheet.render(true);
@@ -522,36 +529,90 @@ async function visGo() {
   if (S.sheet && S.sheet.type === 'visual') Sheet.render(true);
 }
 
-/* ---------------- Field log ---------------- */
-SHEETS.log = {
+/* ---------------- Meeting review (After) ---------------- */
+SHEETS.meeting = {
   render(sh) {
     const l = sh.id ? Store.logs.find((x) => x.id === sh.id) : null;
-    if (l) return { title: l.title, body: logView(l) };
-    const d = S.tool || (S.tool = { stakes: 'Medium', r: { clarity: 3, concision: 3, confidence: 3, composure: 3 } });
-    const dots = (k, label) => `<div class="range-row"><span>${label}</span><div class="dots5">${[1, 2, 3, 4, 5].map((v) => `<button data-act="log-r" data-k="${k}" data-v="${v}" class="${d.r[k] >= v ? 'on' : ''}" aria-label="${label} ${v}"></button>`).join('')}</div></div>`;
-    return { title: 'Field log', body: `<div class="stack-lg">
-      <div class="stack"><h1 class="h1">Field log</h1><p class="muted">Practice only counts if it shows up in real meetings. Log one while it's fresh.</p></div>
-      <label class="field">Meeting<input class="input" id="lg-title" placeholder="e.g. Board strategy committee update"></label>
-      <label class="field">Audience<input class="input" id="lg-aud" placeholder="e.g. Board chair, CFO, two independents"></label>
-      <div class="stack"><span class="eyebrow">Stakes</span><div class="seg full" role="group">${['Low', 'Medium', 'High'].map((s) => `<button data-act="log-stakes" data-v="${s}" aria-pressed="${d.stakes === s}">${s}</button>`).join('')}</div></div>
-      <div class="card"><span class="eyebrow">How did you show up? (1–5)</span>${dots('clarity', 'Clarity')}${dots('concision', 'Concision')}${dots('confidence', 'Confidence')}${dots('composure', 'Composure')}</div>
-      <label class="field">What went well<textarea class="input" id="lg-well" rows="2" style="min-height:70px"></textarea></label>
-      <label class="field">What you'd change<textarea class="input" id="lg-change" rows="2" style="min-height:70px"></textarea></label>
-      <button class="btn block" data-act="log-save">${icon('check')}Save to field log</button>
+    if (l) return { title: l.title, body: meetingView(l) };
+    const t = S.tool || (S.tool = { type: 'internal', sc: Object.fromEntries(C.SCORECARD.map((c) => [c.id, 7])) });
+    return { title: 'Meeting review', body: `<div class="stack-lg">
+      <div class="stack"><h1 class="h1">Meeting review</h1><p class="muted">Your "After" routine: review the transcript, score your presence on the 9-category scorecard, compare with previous meetings and set one adjustment.</p></div>
+      <label class="field">Meeting type<select class="input" id="mt-type">${C.MEETING_TYPES.map((m) => `<option value="${m.id}" ${t.type === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
+      <label class="field">Meeting<input class="input" id="mt-title" value="${esc(t.title || '')}" placeholder="e.g. IC: Series B transplant diagnostics"></label>
+      <label class="field">What did you want from it?<input class="input" id="mt-goal" value="${esc(t.goal || '')}" placeholder="e.g. Approval for diligence budget"></label>
+      <label class="field">Transcript or notes<textarea class="input tall" id="mt-text" placeholder="Paste the meeting transcript (Zoom, Teams, Otter) or your notes on what you said.">${esc(t.text || '')}</textarea></label>
+      <label class="btn secondary" style="cursor:pointer">${icon('file')}Or choose a transcript file (.txt, .vtt, .srt, .md)<input type="file" accept=".txt,.vtt,.srt,.md,text/plain,text/vtt" class="sr" data-act-change="mt-file"></label>
+      ${t.err ? `<div class="note warn">${icon('info')}<span>${esc(t.err)}</span></div>` : ''}
+      ${AI.ready ? (t.busy ? `<div class="thinking"><span class="dotpulse"><i></i><i></i><i></i></span>Scoring the meeting against your scorecard. Long transcripts take a minute.</div>` : `<button class="btn block" data-act="mt-go">${icon('spark')}Score it with the coach</button>`) : ''}
+      <details class="fold" ${AI.ready ? '' : 'open'}><summary>Score it myself${icon('chev')}</summary><div class="fold-body stack">
+        ${C.SCORECARD.map((c) => `<div class="range-row"><span><span style="font-weight:600">${esc(c.name)}</span><span class="small muted" style="display:block">${esc(c.q)}</span></span><span class="row nowrap"><input type="range" min="1" max="10" step="1" value="${t.sc[c.id]}" data-sc="${c.id}" aria-label="${esc(c.name)}"><b class="mono" id="scv-${c.id}">${t.sc[c.id]}</b></span></div>`).join('')}
+        <label class="field">One behavioral adjustment for next time<input class="input" id="mt-adj" placeholder="e.g. Open with the recommendation, not the history"></label>
+        <button class="btn secondary block" data-act="mt-self">${icon('check')}Save my scores</button>
+      </div></details>
     </div>` };
   },
 };
-function logView(l) {
-  const t = S.tool || {};
+function prevMeeting(type, beforeTs) { return Store.logs.filter((l) => l.kind === 'meeting' && l.type === type && l.ts < beforeTs && l.scores).sort((a, b) => b.ts - a.ts)[0] || null; }
+function meetingForm() { return { type: $('#mt-type').value, title: ($('#mt-title').value || '').trim(), goal: ($('#mt-goal').value || '').trim(), text: ($('#mt-text').value || '').trim() }; }
+async function meetingGo() {
+  const f = meetingForm();
+  const t = Object.assign(S.tool, f, { err: '' });
+  if (!f.title) { toast('Name the meeting first.'); return; }
+  if (A.wordList(f.text).length < 40) { t.err = 'Paste more of the transcript or your notes: at least a paragraph of what you said.'; Sheet.render(true); return; }
+  t.busy = true; Sheet.render(true);
+  try {
+    const prev = prevMeeting(f.type, Date.now());
+    const res = await AI.json(AI.meetingPrompt(Store.profile, { type: f.type, title: f.title, goal: f.goal, transcript: f.text }, prev ? { overall: prev.scores.overall, adjustment: prev.adjustment } : null), { modelTier: 'default' });
+    const n10 = (v) => (v == null || isNaN(Number(v)) ? null : A.clamp(Math.round(Number(v) * 10), 0, 100));
+    const arr = (a) => (Array.isArray(a) ? a : []);
+    const scorecard = {}; for (const c of C.SCORECARD) scorecard[c.id] = n10((res.scorecard || {})[c.id]);
+    const dims = {}; for (const d of C.DIMENSIONS) dims[d.id] = n10((res.dims || {})[d.id]);
+    const sv = Object.values(scorecard).filter((x) => x != null);
+    const overall = n10(res.overall) != null ? n10(res.overall) : sv.length ? Math.round(sv.reduce((a, b) => a + b, 0) / sv.length) : null;
+    const item = Store.put('logs', {
+      kind: 'meeting', type: f.type, title: f.title, goal: f.goal, transcript: f.text.slice(0, 30000), date: dkey(), ts: Date.now(),
+      scores: { overall, scorecard, dims }, stage: [1, 2, 3].includes(Number(res.stage)) ? Number(res.stage) : null,
+      assessment: String(res.assessment || ''), worked: arr(res.worked).slice(0, 3).map(String), didnt: arr(res.didnt).slice(0, 3).map(String),
+      examples: arr(res.examples).slice(0, 4).map((e) => ({ quote: String(e.quote || ''), issue: String(e.issue || ''), executive: String(e.executive || '') })),
+      executive_version: String(res.executive_version || ''), patterns: arr(res.patterns).slice(0, 3).map(String),
+      adjustment: String(res.adjustment || ''), objective_area: /^[A-E]$/.test(res.objective_area) ? res.objective_area : null,
+    });
+    S.tool = null;
+    if (S.sheet && S.sheet.type === 'meeting') Sheet.open('meeting', { id: item.id });
+  } catch (e) { t.busy = false; t.err = AI.errorText(e); if (S.sheet && S.sheet.type === 'meeting') Sheet.render(true); }
+}
+function meetingSelf() {
+  const f = meetingForm();
+  if (!f.title) { toast('Name the meeting first.'); return; }
+  const sc = {}; $$('[data-sc]').forEach((el) => { sc[el.dataset.sc] = Number(el.value) * 10; });
+  const v = Object.values(sc);
+  const item = Store.put('logs', { kind: 'meeting', self: true, type: f.type, title: f.title, goal: f.goal, transcript: f.text.slice(0, 30000), date: dkey(), ts: Date.now(),
+    scores: { overall: Math.round(v.reduce((a, b) => a + b, 0) / v.length), scorecard: sc, dims: {} }, adjustment: ($('#mt-adj').value || '').trim() });
+  S.tool = null; Sheet.open('meeting', { id: item.id });
+}
+function meetingView(l) {
+  const sc = l.scores || {}, pl = G.plan();
+  const prev = prevMeeting(l.type, l.ts);
+  const d = prev && sc.overall != null ? sc.overall - prev.scores.overall : null;
+  const stage = l.stage ? C.STAGES[l.stage - 1] : null;
+  const isObjective = Store.profile.nextAdjustment && Store.profile.nextAdjustment === l.adjustment;
   return `<div class="stack-lg">
-    <div class="stack" style="gap:4px"><span class="eyebrow">${esc(fmtDate(l.ts))} · ${esc(l.stakes)} stakes</span><h1 class="h2">${esc(l.title)}</h1>${l.audience ? `<p class="muted">${esc(l.audience)}</p>` : ''}</div>
-    <div class="card">${bars({ clarity: l.r.clarity * 20, concision: l.r.concision * 20, confidence: l.r.confidence * 20, composure: l.r.composure * 20 }, [{ id: 'clarity', name: 'Clarity' }, { id: 'concision', name: 'Concision' }, { id: 'confidence', name: 'Confidence' }, { id: 'composure', name: 'Composure' }])}</div>
-    ${l.well ? `<div class="card stack"><span class="eyebrow">Went well</span><p>${esc(l.well)}</p></div>` : ''}
-    ${l.change ? `<div class="card stack"><span class="eyebrow">Would change</span><p>${esc(l.change)}</p></div>` : ''}
-    ${l.take ? `<div class="card coach stack"><div class="coach-head"><span class="badge">${icon('spark')}</span><span class="eyebrow">Coach's take</span></div><div class="prose" style="white-space:pre-wrap">${esc(l.take)}</div></div>`
-      : AI.ready ? (t.busy ? `<div class="thinking"><span class="dotpulse"><i></i><i></i><i></i></span>Thinking it over…</div>` : `<button class="btn deep" data-act="log-take" data-id="${l.id}">${icon('spark')}Get the coach's take</button>`) : ''}
-    ${t.err ? `<div class="note warn">${icon('info')}<span>${esc(t.err)}</span></div>` : ''}
-    <div class="actions"><span id="delZone" style="display:contents"><button class="btn danger" data-act="log-del1" data-id="${l.id}">${icon('trash')}Delete</button></span></div>
+    <div class="stack" style="gap:4px"><span class="eyebrow">${esc(C.mtype(l.type).name)} · ${esc(fmtDate(l.ts))}${l.self ? ' · self-scored' : ''}</span><h1 class="h2">${esc(l.title)}</h1>${l.goal ? `<p class="small muted">Wanted: ${esc(l.goal)}</p>` : ''}</div>
+    <div class="card raised stack" style="align-items:center">
+      <div style="width:100%;max-width:320px">${gauge(sc.overall, { label: 'Meeting score', base: pl.overall.baseline * 10, target: pl.overall.target * 10 })}</div>
+      <div class="row" style="justify-content:center;gap:8px">${d != null ? `<span class="delta ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : ''}${(d / 10).toFixed(1)} vs last ${esc(C.mtype(l.type).name.toLowerCase())}</span>` : ''}${stage ? `<span class="pill brass">Stage ${stage.id}: ${esc(stage.name)}</span>` : ''}</div>
+    </div>
+    ${l.assessment ? `<div class="card coach stack"><div class="coach-head"><span class="badge">${icon('spark')}</span><span class="eyebrow">Overall assessment</span></div><p class="headline" style="font-size:18px">${esc(l.assessment)}</p></div>` : ''}
+    <div class="card stack"><span class="eyebrow">Scorecard</span>${bars(sc.scorecard || {}, C.SCORECARD)}</div>
+    ${sc.dims && Object.values(sc.dims).some((x) => x != null) ? `<div class="card stack"><span class="eyebrow">Your dimensions in this meeting</span>${bars(sc.dims, C.DIMENSIONS, { plan: true })}</div>` : ''}
+    ${(l.worked || []).length || (l.didnt || []).length ? `<div class="card stack">${(l.worked || []).length ? `<span class="eyebrow">What worked</span>${l.worked.map((x) => `<div class="crit yes">${icon('yes')}<span>${esc(x)}</span></div>`).join('')}` : ''}${(l.didnt || []).length ? `<span class="eyebrow">What didn't</span>${l.didnt.map((x) => `<div class="crit no">${icon('no')}<span>${esc(x)}</span></div>`).join('')}` : ''}</div>` : ''}
+    ${(l.examples || []).length ? `<div class="card stack"><span class="eyebrow">From the transcript</span>${l.examples.map((e) => `<div class="fix"><div class="quote">"${esc(e.quote)}"</div>${e.issue ? `<div class="small muted">${esc(e.issue)}</div>` : ''}${e.executive ? `<div class="better">${esc(e.executive)}</div>` : ''}</div>`).join('')}</div>` : ''}
+    ${l.executive_version ? `<div class="card stack"><span class="eyebrow">What an executive version sounds like</span><div class="better" style="font-size:15.5px;line-height:1.6">${esc(l.executive_version)}</div><div><button class="btn secondary sm" data-act="mt-rehearse" data-id="${l.id}">${icon('mic')}Rehearse it out loud</button></div></div>` : ''}
+    ${(l.patterns || []).length ? `<div class="card stack"><span class="eyebrow">Patterns</span>${l.patterns.map((x) => `<div class="crit partly">${icon('target')}<span>${esc(x)}</span></div>`).join('')}</div>` : ''}
+    ${l.adjustment ? `<div class="prompt-box"><span class="eyebrow">One adjustment for the next meeting</span>${esc(l.adjustment)}</div>
+      ${isObjective ? `<p class="small" style="color:var(--good);font-weight:600">${icon('check', 'inline-ic')} Pinned to your Today screen.</p>` : `<button class="btn" data-act="mt-pin" data-id="${l.id}">${icon('target')}Pin to Today${l.objective_area ? ` and set objective ${l.objective_area}` : ''}</button>`}` : ''}
+    <p class="small muted xp-line"><span class="xp-pop">+${G.xpOf(l)} XP</span></p>
+    <div class="actions"><span id="delZone" style="display:contents"><button class="btn danger" data-act="mt-del1" data-id="${l.id}">${icon('trash')}Delete</button></span></div>
   </div>`;
 }
 
@@ -561,138 +622,128 @@ function weekSummaryText() {
   const block = (from, to) => {
     const ss = Store.sessions.filter((s) => s.ts >= from && s.ts < to);
     const reps = ss.filter((s) => REP_KINDS.includes(s.kind));
-    const sc = reps.map((s) => s.scores && s.scores.overall).filter((x) => x != null);
-    const dims = {}; for (const d of C.DIMENSIONS) { const v = reps.map((s) => s.scores && s.scores[d.id]).filter((x) => x != null); if (v.length) dims[d.id] = Math.round(v.reduce((a, b) => a + b, 0) / v.length); }
-    const f = {}, h = {}; for (const s of reps) { for (const x of ((s.metrics || {}).fillerTypes || [])) f[x.label] = (f[x.label] || 0) + x.n; for (const x of ((s.metrics || {}).hedgeTypes || [])) h[x.label] = (h[x.label] || 0) + x.n; }
-    const fixes = reps.flatMap((s) => ((s.coach || {}).fixes || []).map((x) => x.issue)).filter(Boolean);
-    const logs = Store.logs.filter((l) => l.ts >= from && l.ts < to);
-    return { reps: reps.length, drills: ss.filter((s) => s.kind === 'drill').length, spars: ss.filter((s) => s.kind === 'spar').length, days: new Set(ss.map((s) => s.date)).size, avg: sc.length ? Math.round(sc.reduce((a, b) => a + b, 0) / sc.length) : null, dims, fillers: f, hedges: h, fixes: fixes.slice(0, 12), logs: logs.map((l) => ({ title: l.title, stakes: l.stakes, r: l.r, change: l.change })) };
+    const sc = reps.map((s) => G.scores(s).overall).filter((x) => x != null);
+    const dims = {}; for (const d of C.DIMENSIONS) { const v = reps.map((s) => G.scores(s)[d.id]).filter((x) => x != null); if (v.length) dims[d.id] = Math.round(v.reduce((a, b) => a + b, 0) / v.length); }
+    const h = {}; for (const s of reps) for (const x of ((s.metrics || {}).hedgeTypes || [])) h[x.label] = (h[x.label] || 0) + x.n;
+    const areas = {}; for (const s of reps) for (const n of (s.notes || [])) if (n.area) areas[n.area] = (areas[n.area] || 0) + 1;
+    const hsiaFull = reps.filter((s) => s.hsia && s.hsia.headline && s.hsia.structure && s.hsia.implication && s.hsia.action).length;
+    const fixes = reps.flatMap((s) => ((s.coach || {}).fixes || []).map((x) => `${x.area || ''} ${x.issue}`)).filter(Boolean);
+    const meetings = Store.logs.filter((l) => l.kind === 'meeting' && l.ts >= from && l.ts < to).map((l) => ({ type: l.type, overall: l.scores && l.scores.overall, adjustment: l.adjustment }));
+    return { reps: reps.length, spars: ss.filter((s) => s.kind === 'spar').length, games: ss.filter((s) => s.kind === 'game' || s.kind === 'hsia').length, quests: ss.filter((s) => s.kind === 'quest').length, days: new Set(ss.map((s) => s.date)).size, avg: sc.length ? Math.round(sc.reduce((a, b) => a + b, 0) / sc.length) : null, dims, hedges: h, areaFlags: areas, fullHouseReps: hsiaFull, fixes: fixes.slice(0, 12), meetings };
   };
   const a = block(now - wk, now + 1), b = block(now - 2 * wk, now - wk);
-  return { a, b, text: `LAST 7 DAYS: ${JSON.stringify(a)}\nPREVIOUS 7 DAYS: ${JSON.stringify(b)}` };
+  return { a, b, text: `Current objective: ${Store.profile.objective}\nLAST 7 DAYS: ${JSON.stringify(a)}\nPREVIOUS 7 DAYS: ${JSON.stringify(b)}` };
 }
 SHEETS.review = {
   render(sh) {
     const rv = sh.id ? Store.reviews.find((x) => x.id === sh.id) : null;
     const t = S.tool || {};
     if (!rv) {
-      return { title: 'Weekly review', body: `<div class="stack-lg"><div class="stack"><h1 class="h1">Weekly review</h1><p class="muted">Looks at your last 7 days against the week before: reps, scores, fillers, hedges, coach notes and field logs.</p></div>
-        ${t.busy ? `<div class="thinking"><span class="dotpulse"><i></i><i></i><i></i></span>Reading your week…</div>` : `<button class="btn block" data-act="review-go">${icon('calendar')}Review my week</button>`}
+      return { title: 'Weekly review', body: `<div class="stack-lg"><div class="stack"><h1 class="h1">Weekly review</h1><p class="muted">Your last 7 days against the week before: reps, scores by dimension, framework hits, hedges, meeting reviews. Ends with one objective.</p></div>
+        ${t.busy ? `<div class="thinking"><span class="dotpulse"><i></i><i></i><i></i></span>Reading your week…</div>` : `<button class="btn block" data-act="review-go">${icon('calendar')}Review my week · 15 XP</button>`}
         ${t.err ? `<div class="note warn">${icon('info')}<span>${esc(t.err)}</span></div>` : ''}</div>` };
     }
-    const sk = rv.focus && C.skill(rv.focus.skill);
+    const ar = rv.focus && C.area(rv.focus.area);
     return { title: 'Weekly review', body: `<div class="stack-lg">
       <div class="stack" style="gap:4px"><span class="eyebrow">Week ending ${esc(fmtDate(rv.ts))}</span><h1 class="h2">${esc(rv.headline || '')}</h1></div>
-      <div class="kpis"><div class="kpi"><div class="k">Reps</div><div class="v">${rv.stats.a.reps}</div><div class="s">${rv.stats.b.reps} week before</div></div><div class="kpi"><div class="k">Avg score</div><div class="v">${rv.stats.a.avg ?? '—'}</div><div class="s">${rv.stats.b.avg ?? '—'} week before</div></div><div class="kpi"><div class="k">Days</div><div class="v">${rv.stats.a.days}</div><div class="s">of 7</div></div></div>
+      <div class="kpis"><div class="kpi"><div class="k">Reps</div><div class="v">${rv.stats.a.reps}</div><div class="s">${rv.stats.b.reps} week before</div></div><div class="kpi"><div class="k">Avg score</div><div class="v">${s10(rv.stats.a.avg)}</div><div class="s">${s10(rv.stats.b.avg)} before</div></div><div class="kpi"><div class="k">Days</div><div class="v">${rv.stats.a.days}</div><div class="s">of 7</div></div></div>
       ${rv.wins && rv.wins.length ? `<div class="card stack"><span class="eyebrow">Wins</span>${rv.wins.map((x) => `<div class="crit yes">${icon('yes')}<span>${esc(x)}</span></div>`).join('')}</div>` : ''}
       ${rv.patterns && rv.patterns.length ? `<div class="card stack"><span class="eyebrow">Patterns</span>${rv.patterns.map((x) => `<div class="crit partly">${icon('target')}<span>${esc(x)}</span></div>`).join('')}</div>` : ''}
-      ${rv.focus ? `<div class="prompt-box"><span class="eyebrow">Next week's focus${sk ? ': ' + esc(sk.name) : ''}</span>${esc(rv.focus.why || '')}</div>${rv.focus.drill ? `<div class="note">${icon('clock')}<span><b>Daily drill:</b> ${esc(rv.focus.drill)}</span></div>` : ''}${sk && !Store.profile.focus.includes(sk.id) ? `<button class="btn secondary" data-act="add-focus" data-id="${sk.id}">Add ${esc(sk.name)} to my focus</button>` : ''}` : ''}
+      ${ar ? `<div class="prompt-box"><span class="eyebrow">Next week's objective: ${ar.id}. ${esc(ar.title)}</span>${esc(rv.focus.why || '')}</div>${rv.focus.drill ? `<div class="note">${icon('clock')}<span><b>Daily drill:</b> ${esc(rv.focus.drill)}</span></div>` : ''}${Store.profile.objective !== ar.id ? `<button class="btn" data-act="set-objective" data-id="${ar.id}">Make ${ar.id} this week's objective</button>` : `<p class="small" style="color:var(--good);font-weight:600">${icon('check', 'inline-ic')} Set as this week's objective.</p>`}` : ''}
       ${rv.challenge ? `<div class="note warn">${icon('bolt')}<span><b>Real-world challenge:</b> ${esc(rv.challenge)}</span></div>` : ''}
+      ${rv.stage_note ? `<p class="muted">${esc(rv.stage_note)}</p>` : ''}
     </div>` };
   },
 };
 async function reviewGo() {
   const sum = weekSummaryText();
   S.tool = { busy: true }; Sheet.render(true);
-  let rv = { ts: Date.now(), date: dkey(), stats: { a: { reps: sum.a.reps, avg: sum.a.avg, days: sum.a.days }, b: { reps: sum.b.reps, avg: sum.b.avg } } };
+  const rv = { ts: Date.now(), date: dkey(), stats: { a: { reps: sum.a.reps, avg: sum.a.avg, days: sum.a.days }, b: { reps: sum.b.reps, avg: sum.b.avg } } };
+  const weakestArea = () => { const f = Object.entries(sum.a.areaFlags).sort((x, y) => y[1] - x[1])[0]; return f ? f[0] : Store.profile.objective; };
   if (AI.ready) {
     try {
       const res = await AI.json(AI.reviewPrompt(Store.profile, sum.text), { modelTier: 'default' });
-      Object.assign(rv, { headline: String(res.headline || ''), wins: (res.wins || []).slice(0, 3).map(String), patterns: (res.patterns || []).slice(0, 3).map(String), focus: res.focus ? { skill: String(res.focus.skill || ''), why: String(res.focus.why || ''), drill: String(res.focus.drill || '') } : null, challenge: String(res.challenge || '') });
+      Object.assign(rv, { headline: String(res.headline || ''), wins: (res.wins || []).slice(0, 3).map(String), patterns: (res.patterns || []).slice(0, 3).map(String), focus: res.focus ? { area: /^[A-E]$/.test(res.focus.area) ? res.focus.area : weakestArea(), why: String(res.focus.why || ''), drill: String(res.focus.drill || '') } : null, challenge: String(res.challenge || ''), stage_note: String(res.stage_note || '') });
     } catch (e) { S.tool = { busy: false, err: AI.errorText(e) }; if (S.sheet && S.sheet.type === 'review') Sheet.render(true); return; }
   } else {
-    const dims = Object.entries(sum.a.dims).sort((x, y) => x[1] - y[1]);
-    const weak = dims[0] ? C.DIMENSIONS.find((d) => d.id === dims[0][0]) : null;
-    const topF = Object.entries(sum.a.fillers).sort((x, y) => y[1] - x[1])[0];
-    rv.headline = sum.a.reps ? `${sum.a.reps} reps over ${sum.a.days} days${sum.a.avg != null ? `, averaging ${sum.a.avg}` : ''}.` : 'A quiet week. Consistency beats intensity: aim for one rep a day.';
-    rv.wins = sum.a.avg != null && sum.b.avg != null && sum.a.avg > sum.b.avg ? [`Average score up ${sum.a.avg - sum.b.avg} points on the week before.`] : [];
-    rv.patterns = [weak ? `${weak.name} is your lowest dimension (${dims[0][1]}).` : null, topF ? `Most common filler: "${topF[0]}" (${topF[1]} times).` : null].filter(Boolean);
-    rv.focus = weak ? { skill: Object.keys(C.SKILL_DIM).find((k) => C.SKILL_DIM[k] === weak.id), why: `Lift ${weak.name.toLowerCase()} next week.`, drill: 'One 60-second scenario rep a day on this, then run it back once.' } : null;
+    const ar = C.area(weakestArea());
+    rv.headline = sum.a.reps ? `${sum.a.reps} reps over ${sum.a.days} days${sum.a.avg != null ? `, averaging ${s10(sum.a.avg)}` : ''}.` : 'A quiet week. Consistency beats intensity: one rep a day.';
+    rv.wins = sum.a.avg != null && sum.b.avg != null && sum.a.avg > sum.b.avg ? [`Average up ${((sum.a.avg - sum.b.avg) / 10).toFixed(1)} on the week before.`] : sum.a.fullHouseReps ? [`${sum.a.fullHouseReps} full-house reps (all four framework elements).`] : [];
+    rv.patterns = Object.entries(sum.a.areaFlags).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([k, n]) => `${C.area(k).title}: flagged ${n} times.`);
+    rv.focus = { area: ar.id, why: `Most flags this week were in ${ar.title.toLowerCase()}.`, drill: 'One 60-second scenario a day for this area, then run it back once.' };
+    rv.challenge = 'Open your next meeting with "The decision we need to make is…"';
   }
   const saved = Store.put('reviews', rv);
   S.tool = null;
   if (S.sheet && S.sheet.type === 'review') Sheet.open('review', { id: saved.id });
 }
 
-/* ---------------- Evaluation import, focus, self-assessment ---------------- */
-SHEETS.eval = {
+/* ---------------- Plan, objective, self-rating ---------------- */
+SHEETS.plan = {
   render() {
     const t = S.tool || (S.tool = {});
-    if (t.res) return { title: 'Your evaluation', body: evalPreview(t) };
-    return { title: 'Import evaluation', body: `<div class="stack-lg">
-      <div class="stack"><h1 class="h1">Your evaluation</h1><p class="muted">Paste your executive presence evaluation, 360 feedback, coach's notes or review comments. ${AI.ready ? 'The coach maps it to 23 presence skills, sets your focus and drafts a 4-week plan.' : 'It\'s saved to your profile; pick your focus areas next.'}</p></div>
-      <textarea class="input tall" id="evText" placeholder="Paste the text here">${esc(t.text || (Store.profile.evaluation && Store.profile.evaluation.text) || '')}</textarea>
-      <label class="btn secondary" style="cursor:pointer">${icon('file')}Or choose a text file (.txt, .md)<input type="file" accept=".txt,.md,.markdown,.csv,text/plain,text/markdown" class="sr" data-act-change="ev-file"></label>
-      <p class="small muted">Have a PDF or Word file? Open it, select all, copy, and paste above.</p>
+    if (t.res) return { title: 'Update your plan', body: planPreview(t) };
+    return { title: 'Your development plan', body: `<div class="stack-lg">
+      <div class="stack"><h1 class="h1">Update your plan</h1><p class="muted">Paste a new assessment, coaching notes or an updated plan. ${AI.ready ? 'The coach updates your baselines, strengths and current tendencies.' : 'Claude isn\'t available here, so edit your baseline and target numbers directly on the You tab.'}</p></div>
+      <textarea class="input tall" id="plText" placeholder="Paste the text here">${esc(t.text || '')}</textarea>
+      <label class="btn secondary" style="cursor:pointer">${icon('file')}Or choose a text file (.txt, .md)<input type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" class="sr" data-act-change="pl-file"></label>
       ${t.err ? `<div class="note warn">${icon('info')}<span>${esc(t.err)}</span></div>` : ''}
-      ${t.busy ? `<div class="thinking"><span class="dotpulse"><i></i><i></i><i></i></span>Reading your evaluation. This can take a minute.</div>` : `<button class="btn block" data-act="ev-go">${icon('spark')}${AI.ready ? 'Analyze it' : 'Save and pick focus areas'}</button>`}
+      ${AI.ready ? (t.busy ? `<div class="thinking"><span class="dotpulse"><i></i><i></i><i></i></span>Reading it…</div>` : `<button class="btn block" data-act="pl-go">${icon('spark')}Update my plan</button>`) : `<button class="btn secondary block" data-act="go" data-to="me">Edit numbers on the You tab</button>`}
     </div>` };
   },
 };
-function evalPreview(t) {
-  const res = t.res;
-  const sel = t.sel;
+function planPreview(t) {
+  const r = t.res, pl = G.plan();
   return `<div class="stack-lg">
-    <div class="stack"><span class="eyebrow">Here's what the coach read</span><h1 class="h2">${esc(res.summary || '')}</h1></div>
-    ${res.strengths.length ? `<div class="card stack"><span class="eyebrow">Strengths</span>${res.strengths.map((x) => `<div class="crit yes">${icon('yes')}<span>${esc(x)}</span></div>`).join('')}</div>` : ''}
-    <div class="card stack"><span class="eyebrow">Development areas · tap to set your focus (max 6)</span>
-      ${res.areas.map((a) => { const s = C.skill(a.skill); return s ? `<button class="list-row" style="border-top:1px solid var(--line);padding-inline:0" data-act="ev-toggle" data-id="${a.skill}"><span><span class="t">${esc(s.name)} <span class="pill ${a.priority === 1 ? 'bad' : a.priority === 2 ? 'warn' : ''}">P${a.priority}</span></span><span class="d" style="display:block">${esc(a.evidence)}</span>${a.target ? `<span class="d" style="display:block">Good looks like: ${esc(a.target)}</span>` : ''}</span><span class="chip ${sel.includes(a.skill) ? 'on' : ''}">${sel.includes(a.skill) ? 'Focus' : 'Add'}</span></button>` : ''; }).join('')}
-    </div>
-    ${res.behaviors.length ? `<div class="card stack"><span class="eyebrow">Signature behaviors to adopt</span>${res.behaviors.map((x) => `<div class="crit yes">${icon('target')}<span>${esc(x)}</span></div>`).join('')}</div>` : ''}
-    ${res.plan.length ? `<div class="card stack"><span class="eyebrow">4-week plan</span>${res.plan.map((w) => `<div><div class="h3">Week ${esc(w.week)}: ${esc(w.theme)}</div><ul style="margin:4px 0 0;padding-left:18px">${(w.commitments || []).map((c) => `<li>${esc(c)}</li>`).join('')}</ul></div>`).join('')}</div>` : ''}
-    <button class="btn block" data-act="ev-save">${icon('check')}Save to my profile</button>
-    <button class="btn ghost" data-act="ev-back">Edit the text</button>
-  </div>`;
+    <div class="stack"><span class="eyebrow">What changes</span><h1 class="h2">${esc(r.summary || '')}</h1></div>
+    <div class="card stack"><span class="eyebrow">Baselines</span>${C.DIMENSIONS.map((d) => { const n = r.baseline[d.id]; return `<div class="row between"><span>${esc(d.name)}</span><span class="mono">${f1(pl.baseline[d.id])}${n != null && n !== pl.baseline[d.id] ? ` → <b>${f1(n)}</b>` : ''}</span></div>`; }).join('')}
+      ${r.overall != null ? `<div class="row between"><b>Overall</b><span class="mono">${f1(pl.overall.baseline)} → <b>${f1(r.overall)}</b></span></div>` : ''}</div>
+    ${r.strengths.length ? `<div class="card stack"><span class="eyebrow">Strengths</span>${r.strengths.map((x) => `<div><b>${esc(x.title)}</b><ul class="ul">${x.points.map((pt) => `<li>${esc(pt)}</li>`).join('')}</ul></div>`).join('')}</div>` : ''}
+    <div class="card stack"><span class="eyebrow">Current tendencies</span>${C.AREAS.filter((a) => (r.tendencies[a.id] || []).length).map((a) => `<div><b>${a.id}. ${esc(a.title)}</b><ul class="ul">${r.tendencies[a.id].map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('') || '<p class="small muted">No changes.</p>'}</div>
+    <button class="btn block" data-act="pl-apply">${icon('check')}Apply to my plan</button><button class="btn ghost" data-act="pl-back">Edit the text</button></div>`;
 }
-async function evGo() {
-  const text = $('#evText').value.trim();
-  const t = S.tool; t.text = text; t.err = '';
-  if (text.length < 40) { t.err = 'Paste a bit more: a paragraph or two at least.'; Sheet.render(true); return; }
-  if (!AI.ready) {
-    Store.saveProfile({ evaluation: Object.assign({}, Store.profile.evaluation || {}, { text: text.slice(0, 40000), importedAt: Date.now() }), onboarded: true });
-    S.tool = null; toast('Saved. Now pick your focus areas.'); Sheet.open('focus'); return;
-  }
+async function planGo() {
+  const t = S.tool; t.text = ($('#plText').value || '').trim(); t.err = '';
+  if (t.text.length < 60) { t.err = 'Paste a bit more: a paragraph or two at least.'; Sheet.render(true); return; }
   t.busy = true; Sheet.render(true);
   try {
-    const res = await AI.json(AI.evaluationPrompt(Store.profile, text), { modelTier: 'default' });
-    const arr = (a) => (Array.isArray(a) ? a : []);
-    const areas = arr(res.areas).filter((a) => C.skill(a.skill)).map((a) => ({ skill: a.skill, priority: A.clamp(Number(a.priority) || 2, 1, 3), evidence: String(a.evidence || ''), target: String(a.target || '') })).sort((a, b) => a.priority - b.priority);
-    const ratings = {}; for (const [k, v] of Object.entries(res.ratings || {})) if (C.skill(k)) ratings[k] = A.clamp(Math.round(Number(v) || 3), 1, 5);
-    t.res = { summary: String(res.summary || ''), strengths: arr(res.strengths).slice(0, 5).map(String), areas, ratings, behaviors: arr(res.behaviors).slice(0, 3).map(String), plan: arr(res.plan).slice(0, 4).map((w, i) => ({ week: w.week || i + 1, theme: String(w.theme || ''), commitments: arr(w.commitments).slice(0, 4).map(String) })) };
-    t.sel = areas.slice(0, 6).map((a) => a.skill);
+    const res = await AI.json(AI.planPrompt(Store.profile, t.text), { modelTier: 'default' });
+    const num = (v) => (v == null || isNaN(Number(v)) ? null : A.clamp(Math.round(Number(v) * 2) / 2, 1, 10));
+    const baseline = {}; for (const d of C.DIMENSIONS) baseline[d.id] = num((res.baseline || {})[d.id]);
+    const tend = {}; for (const a of C.AREAS) tend[a.id] = (Array.isArray((res.tendencies || {})[a.id]) ? res.tendencies[a.id] : []).slice(0, 4).map(String);
+    t.res = { summary: String(res.summary || ''), baseline, overall: res.overall != null ? A.clamp(Math.round(Number(res.overall) * 4) / 4, 1, 10) : null, strengths: (Array.isArray(res.strengths) ? res.strengths : []).slice(0, 5).map((x) => ({ title: String(x.title || ''), points: (Array.isArray(x.points) ? x.points : []).slice(0, 4).map(String) })), tendencies: tend, objective: /^[A-E]$/.test(res.objective_area) ? res.objective_area : null };
   } catch (e) { t.err = AI.errorText(e); }
   t.busy = false;
-  if (S.sheet && S.sheet.type === 'eval') Sheet.render();
+  if (S.sheet && S.sheet.type === 'plan') Sheet.render();
 }
-function evSave() {
-  const t = S.tool;
-  const p = Store.profile;
-  Store.saveProfile({
-    evaluation: Object.assign({}, t.res, { text: t.text.slice(0, 40000), importedAt: Date.now() }),
-    focus: t.sel.length ? t.sel : p.focus,
-    ratings: Object.assign({}, p.ratings, t.res.ratings),
-    onboarded: true,
-  });
-  toast('Your focus and plan are set.');
-  Sheet.close();
+function planApply() {
+  const r = S.tool.res, pl = G.plan();
+  const cur = Object.assign({}, Store.profile.plan || {});
+  cur.baseline = Object.assign({}, pl.baseline); for (const d of C.DIMENSIONS) if (r.baseline[d.id] != null) cur.baseline[d.id] = r.baseline[d.id];
+  cur.target = Object.assign({}, pl.target);
+  if (r.overall != null) cur.overall = Object.assign({}, pl.overall, { baseline: r.overall });
+  if (r.strengths.length) cur.strengths = r.strengths;
+  const tend = Object.assign({}, pl.tendencies); for (const a of C.AREAS) if (r.tendencies[a.id].length) tend[a.id] = r.tendencies[a.id];
+  cur.tendencies = tend;
+  cur.updatedAt = Date.now();
+  Store.saveProfile(Object.assign({ plan: cur, onboarded: true }, r.objective ? { objective: r.objective } : {}));
+  toast('Plan updated'); Sheet.close();
 }
-SHEETS.focus = {
+SHEETS.objective = {
   render() {
-    const sel = S.tool && S.tool.sel ? S.tool.sel : (S.tool = { sel: [...Store.profile.focus] }).sel;
-    return { title: 'Focus areas', body: `<div class="stack-lg">
-      <div class="stack"><h1 class="h1">Focus areas</h1><p class="muted">Pick up to six. Your daily plan, scenarios and coaching lean toward these.</p><span class="pill brass" style="align-self:flex-start">${sel.length} / 6 selected</span></div>
-      ${C.PILLARS.map((pl) => `<section class="stack"><span class="eyebrow">${esc(pl.name)}</span><div class="chips">${C.SKILLS.filter((s) => s.pillar === pl.id).map((s) => `<button class="chip ${sel.includes(s.id) ? 'on' : ''}" data-act="focus-toggle" data-id="${s.id}" aria-pressed="${sel.includes(s.id)}">${esc(s.name)}</button>`).join('')}</div></section>`).join('')}
-      <button class="btn block" data-act="focus-save" ${sel.length ? '' : 'disabled'}>${icon('check')}Save focus</button>
-    </div>` };
+    const cur = Store.profile.objective, pl = G.plan();
+    return { title: 'This week\'s objective', body: `<div class="stack-lg"><div class="stack"><h1 class="h1">One objective</h1><p class="muted">Your operating model: one improvement objective at a time. Missions, scenarios and the coach lean toward it.</p></div>
+      ${C.AREAS.map((a) => `<button class="card stack objective-pick ${cur === a.id ? 'on' : ''}" data-act="set-objective" data-id="${a.id}" data-close="1"><div class="row nowrap" style="gap:12px"><span class="area-badge">${a.id}</span><span class="h3">${esc(a.title)}</span>${cur === a.id ? '<span class="pill good" style="margin-left:auto">Current</span>' : ''}</div>${(pl.tendencies[a.id] || []).length ? `<span class="small muted">Watch for: ${esc(pl.tendencies[a.id].join('; '))}</span>` : ''}<span class="small">${esc(a.desired.join(' · '))}</span></button>`).join('')}</div>` };
   },
 };
 SHEETS.assess = {
   render() {
+    const pl = G.plan();
     const r = S.tool && S.tool.r ? S.tool.r : (S.tool = { r: Object.assign({}, Store.profile.ratings) }).r;
-    return { title: 'Self-assessment', body: `<div class="stack-lg">
-      <div class="stack"><h1 class="h1">Self-assessment</h1><p class="muted">Rate yourself today, 1 (a real gap) to 5 (a signature strength). Low ratings in your focus areas get more practice. Redo it monthly.</p></div>
-      ${C.PILLARS.map((pl) => `<section class="card"><span class="eyebrow">${esc(pl.name)}</span>${C.SKILLS.filter((s) => s.pillar === pl.id).map((s) => `<div class="range-row"><span><span style="font-weight:600">${esc(s.name)}</span><span class="small muted" style="display:block">${esc(s.good)}</span></span><div class="dots5">${[1, 2, 3, 4, 5].map((v) => `<button data-act="rate" data-id="${s.id}" data-v="${v}" class="${(r[s.id] || 0) >= v ? 'on' : ''}" aria-label="${esc(s.name)} ${v} of 5"></button>`).join('')}</div></div>`).join('')}</section>`).join('')}
-      <button class="btn block" data-act="assess-save">${icon('check')}Save ratings</button>
+    return { title: 'Self-rating', body: `<div class="stack-lg">
+      <div class="stack"><h1 class="h1">Self-rating</h1><p class="muted">How do you think you're showing up right now, 1–10? Compare it with your measured scores on Progress. Redo it monthly.</p></div>
+      <div class="card">${C.DIMENSIONS.map((d) => `<div class="range-row"><span><span style="font-weight:600">${esc(d.name)}</span><span class="small muted" style="display:block">baseline ${f1(pl.baseline[d.id])} · target ${f1(pl.target[d.id])}</span></span><span class="row nowrap"><input type="range" min="1" max="10" step="0.5" value="${r[d.id] || pl.baseline[d.id]}" data-rate="${d.id}" aria-label="${esc(d.name)}"><b class="mono" id="rv-${d.id}">${f1(r[d.id] || pl.baseline[d.id])}</b></span></div>`).join('')}</div>
+      <button class="btn block" data-act="assess-save">${icon('check')}Save</button>
     </div>` };
   },
 };
@@ -705,9 +756,11 @@ SHEETS.export = {
 
 /* ---------------- Export / import ---------------- */
 function sessionsCsv() {
-  const cols = ['date', 'kind', 'title', 'attempt', 'source', 'durationSec', 'overall', 'clarity', 'concision', 'confidence', 'delivery', 'impact', 'composure', 'words', 'wpm', 'fillers', 'hedges', 'bluf', 'numbers', 'coach_headline'];
+  const cols = ['date', 'kind', 'title', 'attempt', 'source', 'durationSec', 'overall'].concat(C.DIMENSIONS.map((d) => d.id), ['headline', 'structure', 'implication', 'action', 'exec_phrases', 'words', 'wpm', 'fillers', 'hedges', 'xp', 'coach_headline']);
   const q = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const rows = Store.sessions.map((s) => { const sc = s.scores || {}, m = s.metrics || {}; return [s.date, s.kind, s.title, s.attempt || '', s.source || '', s.durationSec || '', sc.overall, sc.clarity, sc.concision, sc.confidence, sc.delivery, sc.impact, sc.composure, m.words, m.wpm, m.fillers, m.hedges, m.bluf, m.numbers, s.coach && s.coach.headline].map(q).join(','); });
+  const d10 = (v) => (v == null ? '' : (v / 10).toFixed(1));
+  const all = Store.sessions.concat(Store.logs.map((l) => Object.assign({}, l, { kind: 'meeting' })));
+  const rows = all.map((s) => { const sc = s.kind === 'meeting' ? Object.assign({ overall: s.scores && s.scores.overall }, (s.scores || {}).dims || {}) : G.scores(s), m = s.metrics || {}, h = s.hsia || {}; return [s.date, s.kind, s.title, s.attempt || '', s.source || '', s.durationSec || '', d10(sc.overall)].concat(C.DIMENSIONS.map((d) => d10(sc[d.id])), [h.headline ? 1 : '', h.structure ? 1 : '', h.implication ? 1 : '', h.action ? 1 : '', (s.execPhrases || []).join(' '), m.words, m.wpm, m.fillers, m.hedges, G.xpOf(s), (s.coach && s.coach.headline) || s.assessment || '']).map(q).join(','); });
   return [cols.join(',')].concat(rows).join('\n');
 }
 async function exportData(fmt) {
@@ -729,8 +782,11 @@ function openPlanItem(kind, id) {
   if (kind === 'spar') return openSpar(id);
   if (kind === 'teachback') return openRep(teachbackSpec(C.DX.find((x) => x[0] === id)));
   if (kind === 'impromptu') return openRep(impromptuSpec(id));
-  if (kind === 'review') return Sheet.open('review');
-  if (kind === 'log') { S.tool = null; return Sheet.open('log'); }
+  if (kind === 'review') { S.tool = null; return Sheet.open('review'); }
+  if (kind === 'meeting' || kind === 'log') { S.tool = null; return Sheet.open('meeting'); }
+  if (kind === 'game') return openEoa();
+  if (kind === 'hsia') return openHsia(id);
+  if (kind === 'boss') return openSpar(id, { boss: true });
 }
 function go(route) {
   if (!ROUTES.includes(route)) route = 'today';
@@ -755,8 +811,10 @@ const ACT = {
   'sheet-close': () => Sheet.close(),
   'sheet-back': () => { S.tool = null; Sheet.open('lessons'); },
   open: (el) => {
-    const t = el.dataset.sheet; S.tool = null;
+    let t = el.dataset.sheet; S.tool = null;
+    if (t === 'log') t = 'meeting';
     if (t === 'pregame') { S.drill = { id: 'pregame', i: 0, running: false }; return Sheet.open('drill'); }
+    if (t === 'hsia') return openHsia(el.dataset.id);
     Sheet.open(t, el.dataset.id ? { id: el.dataset.id } : {});
   },
   plan: (el) => openPlanItem(el.dataset.kind, el.dataset.id),
@@ -829,7 +887,7 @@ const ACT = {
   'spar-retry': () => sparAsk(),
   'spar-end': () => sparDebrief(),
   'spar-voice': () => { const sp = S.spar; sp.voice = !sp.voice; if (!sp.voice) { try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } } const box = $('#sparBox'); const keep = box ? box.value : ''; Sheet.render(true); const nb = $('#sparBox'); if (nb) nb.value = keep; },
-  'spar-again': () => { const sp = S.spar; openSpar(sp.persona.id, { ctx: sp.ctx, difficulty: sp.difficulty, rounds: sp.rounds }); },
+  'spar-again': () => { const sp = S.spar; openSpar(sp.persona.id, { ctx: sp.ctx, difficulty: sp.difficulty, rounds: sp.rounds, boss: sp.boss }); },
   'spar-q': (el) => openRep(questionSpec(el.dataset.q, el.dataset.aud, 'spar')),
 
   // drills
@@ -853,7 +911,7 @@ const ACT = {
   // tools
   'prep-go': (el) => prepGo(el.dataset.id || null),
   'prep-edit': (el) => { S.tool = null; Sheet.open('prep', { id: el.dataset.id, edit: true }); },
-  'prep-open': (el) => { const pr = Store.preps.find((x) => x.id === el.dataset.id); if (!pr) return; const op = pr.result && pr.result.opening; openRep(customSpec({ title: `Opening: ${pr.title}`, audience: pr.audience, situation: pr.objective, prompt: op ? `Deliver your opening. Your draft: "${op}"` : `Open the meeting. Your objective: ${pr.objective}`, time: 45, focus: ['bluf', 'conviction', 'concision'] })); },
+  'prep-open': (el) => { const pr = Store.preps.find((x) => x.id === el.dataset.id); if (!pr) return; const op = pr.result && pr.result.opening; openRep(customSpec({ title: `Opening: ${pr.title}`, audience: pr.audience, situation: pr.objective, prompt: op ? `Deliver your opening. Your draft: "${op}"` : `Open the meeting. Your objective: ${pr.objective}`, time: 45, areas: ['A', 'E'] })); },
   'prep-q': (el) => { const pr = Store.preps.find((x) => x.id === el.dataset.id); const q = pr && pr.result && pr.result.questions[Number(el.dataset.i)]; if (q) openRep(questionSpec(q.q, pr.audience, pr.id)); },
   'prep-spar': (el) => { const pr = Store.preps.find((x) => x.id === el.dataset.id); if (!pr) return; openSpar(personaForAudience(pr.audience), { ctx: `${pr.title}. You want them to: ${pr.objective}. Facts: ${pr.facts || 'n/a'}. Their likely concern: ${pr.worries || 'n/a'}.` }); },
   'prep-del1': (el) => { $('#delZone').innerHTML = `<button class="btn danger" data-act="prep-del2" data-id="${el.dataset.id}">Delete for good</button>`; },
@@ -861,37 +919,34 @@ const ACT = {
   'sh-mode': (el) => { S.tool = Object.assign(S.tool || {}, { mode: el.dataset.v, text: $('#shIn').value, aud: $('#shAud').value }); Sheet.render(true); },
   'sh-go': () => sharpenGo(),
   'sh-copy': () => { const el = $('#shOut'); copyText(el.textContent, el); },
-  'sh-rehearse': () => { const t = S.tool; if (!t || !t.res) return; openRep(customSpec({ title: 'Sharpened version', audience: t.aud, prompt: `Say this out loud, naturally, in your own voice: "${t.res.sharpened.slice(0, 600)}"`, time: Math.max(30, Math.round(A.wordList(t.res.sharpened).length / 2.4)), focus: ['pace', 'pauses', 'vocal_variety'] })); },
+  'sh-rehearse': () => { const t = S.tool; if (!t || !t.res) return; openRep(customSpec({ title: 'Sharpened version', audience: t.aud, prompt: `Say this out loud, naturally, in your own voice: "${t.res.sharpened.slice(0, 600)}"`, time: Math.max(30, Math.round(A.wordList(t.res.sharpened).length / 2.4)), areas: ['D', 'A'] })); },
   'vis-ctx': (el) => { S.tool.ctx = el.dataset.v; Sheet.render(true); },
   'vis-go': () => visGo(),
-  'log-r': (el) => { S.tool.r[el.dataset.k] = Number(el.dataset.v); $$(`[data-act="log-r"][data-k="${el.dataset.k}"]`).forEach((b) => b.classList.toggle('on', Number(b.dataset.v) <= Number(el.dataset.v))); },
-  'log-stakes': (el) => { S.tool.stakes = el.dataset.v; $$('[data-act="log-stakes"]').forEach((b) => b.setAttribute('aria-pressed', String(b === el))); },
-  'log-save': () => {
-    const title = ($('#lg-title').value || '').trim();
-    if (!title) { toast('Name the meeting first.'); return; }
-    const t = S.tool;
-    const l = Store.put('logs', { ts: Date.now(), date: dkey(), title, audience: $('#lg-aud').value.trim(), stakes: t.stakes, r: Object.assign({}, t.r), well: $('#lg-well').value.trim(), change: $('#lg-change').value.trim() });
-    toast('Logged · +15 XP'); S.tool = null; Sheet.open('log', { id: l.id });
-  },
-  'log-take': async (el) => {
-    const l = Store.logs.find((x) => x.id === el.dataset.id); if (!l) return;
-    S.tool = { busy: true }; Sheet.render(true);
-    try { const res = await AI.text(AI.fieldPrompt(Store.profile, l), { modelTier: 'default' }); l.take = String(res.text || '').trim(); Store.put('logs', l); S.tool = null; }
-    catch (e) { S.tool = { err: AI.errorText(e) }; }
-    if (S.sheet && S.sheet.type === 'log') Sheet.render(true);
-  },
-  'log-del1': (el) => { $('#delZone').innerHTML = `<button class="btn danger" data-act="log-del2" data-id="${el.dataset.id}">Delete for good</button>`; },
-  'log-del2': (el) => { Store.remove('logs', el.dataset.id); toast('Deleted'); Sheet.close(); },
   'review-go': () => reviewGo(),
-  'add-focus': (el) => { const f = Store.profile.focus.filter((x) => x !== el.dataset.id); f.unshift(el.dataset.id); Store.saveProfile({ focus: f.slice(0, 6) }); toast('Added to your focus'); Sheet.render(true); },
-  'ev-go': () => evGo(),
-  'ev-back': () => { S.tool.res = null; Sheet.render(); },
-  'ev-toggle': (el) => { const t = S.tool, id = el.dataset.id; t.sel = t.sel.includes(id) ? t.sel.filter((x) => x !== id) : t.sel.length >= 6 ? (toast('Six at most. Remove one first.'), t.sel) : t.sel.concat(id); Sheet.render(true); },
-  'ev-save': () => evSave(),
-  'focus-toggle': (el) => { const t = S.tool, id = el.dataset.id; if (t.sel.includes(id)) t.sel.splice(t.sel.indexOf(id), 1); else if (t.sel.length >= 6) toast('Six at most. Remove one first.'); else t.sel.push(id); Sheet.render(true); },
-  'focus-save': () => { Store.saveProfile({ focus: [...S.tool.sel], onboarded: true }); toast('Focus saved'); Sheet.close(); },
-  rate: (el) => { const t = S.tool; t.r[el.dataset.id] = Number(el.dataset.v); $$(`[data-act="rate"][data-id="${el.dataset.id}"]`).forEach((b) => b.classList.toggle('on', Number(b.dataset.v) <= Number(el.dataset.v))); },
-  'assess-save': () => { Store.saveProfile({ ratings: Object.assign({}, S.tool.r), onboarded: true }); toast('Ratings saved'); Sheet.close(); },
+  'assess-save': () => { const r = {}; $$('[data-rate]').forEach((el) => { r[el.dataset.rate] = Number(el.value); }); Store.saveProfile({ ratings: r }); toast('Self-rating saved'); Sheet.close(); },
+  boss: () => { const b = G.boss(); openSpar(b.persona.id, { boss: true }); },
+  game: () => openEoa(),
+  'set-objective': (el) => { Store.saveProfile({ objective: el.dataset.id }); toast(`Objective ${el.dataset.id}: ${C.area(el.dataset.id).title}`); if (el.dataset.close) Sheet.close(); else if (S.sheet) Sheet.render(true); else renderView(); },
+  'cel-next': () => Celebrate.next(),
+  'eoa-start': () => eoaStart(),
+  'eoa-pick': (el) => eoaAnswer(el.dataset.v === '1'),
+  'eoa-next': () => { const g = S.game; g.i++; g.answered = null; if (g.i >= g.items.length) eoaEnd(); else Sheet.render(true); },
+  'hb-score': () => hbLock(),
+  'hb-coach': () => hbCoach(),
+  'hb-say': () => hbSay(),
+  'hb-new': () => { const cur = S.game && S.game.kase ? S.game.kase.id : ''; const others = C.HSIA_CASES.filter((k) => k.id !== cur); openHsia(others[Math.floor(Math.random() * others.length)].id); },
+  'quest-open': (el) => { S.tool = { open: el.dataset.id }; Sheet.render(true); },
+  'quest-save': (el) => { const q = C.QUESTS.find((x) => x.id === el.dataset.id); const n = $('#qnote'); Store.put('sessions', { kind: 'quest', refId: q.id, week: G.isoWeek().key, title: `Quest: ${q.cat}`, note: n ? n.value.trim() : '', date: dkey(), ts: Date.now() }); S.tool = {}; toast('Quest logged · +30 XP'); chime('small'); Sheet.render(true); },
+  'arsenal-rep': () => { const pool = C.SCENARIOS.filter((x) => x.areas.includes(Store.profile.objective)); openRep(scenarioSpec(pick(pool.length ? pool : C.SCENARIOS, Math.floor(Math.random() * 99)).id)); },
+  'mt-go': () => meetingGo(),
+  'mt-self': () => meetingSelf(),
+  'mt-pin': (el) => { const l = Store.logs.find((x) => x.id === el.dataset.id); if (!l) return; Store.saveProfile(Object.assign({ nextAdjustment: l.adjustment }, l.objective_area ? { objective: l.objective_area } : {})); toast('Pinned to Today'); Sheet.render(true); },
+  'mt-rehearse': (el) => { const l = Store.logs.find((x) => x.id === el.dataset.id); if (!l) return; openRep(customSpec({ title: `Replay: ${l.title}`, audience: C.mtype(l.type).name, situation: 'From your meeting review.', prompt: `Deliver the executive version of your key intervention, in your own words: "${l.executive_version.slice(0, 700)}"`, time: 60, areas: ['A', 'E'] })); },
+  'mt-del1': (el) => { $('#delZone').innerHTML = `<button class="btn danger" data-act="mt-del2" data-id="${el.dataset.id}">Delete for good</button>`; },
+  'mt-del2': (el) => { Store.remove('logs', el.dataset.id); toast('Deleted'); Sheet.close(); },
+  'pl-go': () => planGo(),
+  'pl-apply': () => planApply(),
+  'pl-back': () => { S.tool.res = null; Sheet.render(); },
   export: (el) => exportData(el.dataset.fmt),
   'export-copy': () => { const el = $('#exportText'); copyText(el.value, el); },
   reset1: () => { $('#resetZone').innerHTML = `<div class="note warn">${icon('info')}<span>This erases every session, log, prep and setting, on every device. It can't be undone.</span></div><div class="actions" style="margin-top:10px"><button class="btn danger" data-act="reset2">Erase everything</button><button class="btn secondary" data-act="reset-cancel">Cancel</button></div>`; },
@@ -901,7 +956,8 @@ const ACT = {
 const CHANGE = {
   'up-file': (el) => { const f = el.files && el.files[0]; S.rep.upFile = f || null; const n = $('#upName'); if (n) n.textContent = f ? `${f.name} · ${(f.size / 1048576).toFixed(1)} MB` : 'Choose a recording'; const b = $('#upGo'); if (b) b.disabled = !f; },
   'vis-file': (el) => visFile(el),
-  'ev-file': (el) => { const f = el.files && el.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { $('#evText').value = String(rd.result || '').slice(0, 60000); }; rd.readAsText(f); },
+  'pl-file': (el) => { const f = el.files && el.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { $('#plText').value = String(rd.result || '').slice(0, 60000); }; rd.readAsText(f); },
+  'mt-file': (el) => { const f = el.files && el.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { const txt = String(rd.result || '').replace(/^WEBVTT.*$/m, '').replace(/^\d+\s*$/gm, '').replace(/^\d\d:\d\d[:.,\d]* --> .*$/gm, '').replace(/\n{2,}/g, '\n').trim(); $('#mt-text').value = txt.slice(0, 60000); if (!$('#mt-title').value) $('#mt-title').value = f.name.replace(/\.[^.]+$/, ''); }; rd.readAsText(f); },
   'dx-pick': (el) => { const dx = C.DX.find((x) => x[0] === el.value); if (dx) { S.rep.spec = teachbackSpec(dx); Sheet.render(true); } },
   import: (el) => {
     const f = el.files && el.files[0]; if (!f) return;
@@ -922,27 +978,44 @@ function boot() {
   });
   document.addEventListener('change', (e) => {
     const t = e.target;
+    if (t.dataset.pf || t.dataset.plan || t.dataset.set) S.deferRender = true; // let a tap that caused this blur finish first
     if (t.dataset.actChange && CHANGE[t.dataset.actChange]) return CHANGE[t.dataset.actChange](t);
     if (t.dataset.pf) return Store.saveProfile({ [t.dataset.pf]: t.value.trim() });
+    if (t.dataset.plan) {
+      const v = A.clamp(Number(t.value) || 0, 1, 10); const pl = G.plan(); const cur = Object.assign({}, Store.profile.plan || {});
+      if (t.dataset.plan === 'overall') cur.overall = Object.assign({}, pl.overall, { [t.dataset.dim]: v });
+      else cur[t.dataset.plan] = Object.assign({}, pl[t.dataset.plan], { [t.dataset.dim]: v });
+      Store.saveProfile({ plan: cur }); toast('Plan saved'); return;
+    }
     if (t.dataset.set) {
       const k = t.dataset.set, s = Object.assign({}, Store.profile.settings);
       if (k === 'pace') { const [a, b] = t.value.split('-').map(Number); s.paceLo = a; s.paceHi = b; }
-      else if (k === 'autoCoach' || k === 'voice') s[k] = t.checked;
+      else if (k === 'autoCoach' || k === 'voice' || k === 'sound') s[k] = t.checked;
       else if (k === 'customFillers') s.customFillers = t.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 20);
       else s[k] = Number(t.value);
       Store.saveProfile({ settings: s }); toast('Saved');
     }
   });
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.dataset.sc) { const b = $('#scv-' + t.dataset.sc); if (b) b.textContent = t.value; if (S.tool && S.tool.sc) S.tool.sc[t.dataset.sc] = Number(t.value); }
+    if (t.dataset.rate) { const b = $('#rv-' + t.dataset.rate); if (b) b.textContent = f1(t.value); }
+  });
   document.addEventListener('focusout', () => { setTimeout(() => { const ae = document.activeElement; if (S.pendingRender && !($('#view').contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) renderView(); }, 50); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.sheet && !Rec.active) Sheet.close(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#celebrate').hidden) return Celebrate.next();
+    if (e.key === 'Escape' && S.sheet && !Rec.active) Sheet.close();
+    if (S.sheet && S.sheet.type === 'eoa' && S.game && S.game.step === 'play' && !S.game.answered && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) eoaAnswer(e.key === 'ArrowRight');
+  });
   window.addEventListener('scroll', () => { const tb = $('.topbar'); if (tb) tb.classList.toggle('scrolled', window.scrollY > 4); }, { passive: true });
   window.addEventListener('hashchange', () => { const r = location.hash.slice(1); if (ROUTES.includes(r) && r !== S.route) { S.route = r; renderView(); } });
   const h = location.hash.slice(1); S.route = ROUTES.includes(h) ? h : 'today';
   Store.on((what) => {
     if (what === 'profile' || what === 'all') A.setCustomFillers(Store.profile.settings.customFillers);
     renderView();
+    if (what !== 'profile') G.check();
   });
-  AI.on(() => { renderView(); if (S.sheet && ['spar', 'prep', 'sharpen', 'visual', 'eval', 'review'].includes(S.sheet.type) && !(S.tool && S.tool.busy) && !(S.spar && S.spar.step !== 'setup')) Sheet.render(true); });
+  AI.on(() => { renderView(); if (S.sheet && ['spar', 'prep', 'sharpen', 'visual', 'plan', 'review', 'meeting'].includes(S.sheet.type) && !(S.tool && S.tool.busy) && !(S.spar && S.spar.step !== 'setup')) Sheet.render(true); });
   Store.init();
   AI.init();
   if (window.speechSynthesis) { try { speechSynthesis.getVoices(); } catch (e) { /* ignore */ } }

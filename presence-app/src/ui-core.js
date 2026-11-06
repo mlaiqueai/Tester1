@@ -89,34 +89,38 @@ async function copyText(text, fallbackEl) {
   }
 }
 
-/* ---------------- Gauge (VU meter) ---------------- */
+/* ---------------- Gauge (VU meter, 0-10) ---------------- */
 function gauge(score, opts = {}) {
+  // score: internal 0-100
   const cx = 120, cy = 116, R = 96, a0 = -58, a1 = 58;
   const ang = (v) => a0 + ((a1 - a0) * A.clamp(v, 0, 100)) / 100;
   const pt = (deg, r) => [cx + r * Math.sin((deg * Math.PI) / 180), cy - r * Math.cos((deg * Math.PI) / 180)];
   const arc = (v0, v1, r) => { const [x0, y0] = pt(ang(v0), r), [x1, y1] = pt(ang(v1), r); return `M${x0.toFixed(1)} ${y0.toFixed(1)} A${r} ${r} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`; };
   let ticks = '';
   for (let v = 0; v <= 100; v += 5) {
-    const major = v % 20 === 0;
-    const [x0, y0] = pt(ang(v), R - (major ? 12 : 7)), [x1, y1] = pt(ang(v), R);
+    const major = v % 10 === 0;
+    const [x0, y0] = pt(ang(v), R - (major ? 11 : 6)), [x1, y1] = pt(ang(v), R);
     ticks += `<line class="tick${major ? ' major' : ''}" x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke-width="${major ? 1.6 : 1}"/>`;
-    if (major) { const [lx, ly] = pt(ang(v), R + 11); ticks += `<text class="lbl" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="middle">${v}</text>`; }
+    if (major && v % 20 === 0) { const [lx, ly] = pt(ang(v), R + 11); ticks += `<text class="lbl" x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="middle">${v / 10}</text>`; }
   }
+  const mark = (v, cls) => { if (v == null) return ''; const [x0, y0] = pt(ang(v), R - 16), [x1, y1] = pt(ang(v), R + 4); return `<line class="${cls}" x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}"/>`; };
   const has = score != null && !isNaN(score);
   const target = has ? ang(score) : a0;
   const start = opts.animate === false ? target : a0;
-  const id = 'g' + Math.random().toString(36).slice(2, 8);
-  return `<svg class="gauge ${opts.dark ? 'on-deep' : ''}" viewBox="0 0 240 178" role="img" aria-label="${esc(opts.label || 'Presence score')}: ${has ? Math.round(score) : 'no score yet'}">
+  const tgt = opts.target != null ? opts.target : 85;
+  return `<svg class="gauge ${opts.dark ? 'on-deep' : ''}" viewBox="0 0 240 ${opts.base != null && opts.marks !== false ? 194 : 178}" role="img" aria-label="${esc(opts.label || 'Presence score')}: ${has ? s10(score) : 'no score yet'} out of 10">
     <path class="arc" d="${arc(0, 100, R)}"/>
-    <path class="zone-mid" d="${arc(60, 80, R + 2.5)}"/>
-    <path class="zone-good" d="${arc(80, 100, R + 2.5)}"/>
+    <path class="zone-mid" d="${arc(opts.base != null ? opts.base : 70, tgt, R + 2.5)}"/>
+    <path class="zone-good" d="${arc(tgt, 100, R + 2.5)}"/>
     ${ticks}
-    <g class="needle-g" id="${id}" data-target="${target}" style="transform: rotate(${start}deg); transform-origin: ${cx}px ${cy}px;">
+    ${opts.marks !== false ? mark(opts.base, 'mark-base') + mark(tgt, 'mark-target') : ''}
+    <g class="needle-g" data-target="${target}" style="transform: rotate(${start}deg); transform-origin: ${cx}px ${cy}px;">
       <line class="needle" x1="${cx}" y1="${cy + 8}" x2="${cx}" y2="${cy - R + 4}"/>
     </g>
     <circle class="pivot" cx="${cx}" cy="${cy}" r="5"/>
-    <text class="score${has ? '' : ' empty'}" x="${cx}" y="${cy + (has ? 44 : 36)}" text-anchor="middle">${has ? Math.round(score) : 'No score yet'}</text>
+    <text class="score${has ? '' : ' empty'}" x="${cx}" y="${cy + (has ? 44 : 36)}" text-anchor="middle">${has ? s10(score) : 'No score yet'}</text>
     <text class="cap" x="${cx}" y="${cy + 59}" text-anchor="middle">${esc((opts.label || 'PRESENCE SCORE').toUpperCase())}</text>
+    ${opts.marks !== false && opts.base != null ? `<text class="mark-lbl" x="${cx}" y="${cy + 73}" text-anchor="middle"><tspan class="ml-base">┊ base ${s10(opts.base)}</tspan>   <tspan class="ml-goal">▮ goal ${s10(tgt)}</tspan></text>` : ''}
   </svg>`;
 }
 function animateGauges(root = document) {
@@ -158,150 +162,38 @@ function lineChart(values, opts = {}) {
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || 'Trend chart')}">${g}</svg>`;
 }
 
-function radarChart(now, then, dims) {
-  const W = 320, H = 250, cx = 160, cy = 126, R = 82;
+function radarChart(now, layers, dims) {
+  const W = 340, H = 270, cx = 170, cy = 136, R = 86;
   const n = dims.length;
   const p = (i, r) => { const a = (-90 + (360 / n) * i) * Math.PI / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
   let g = '';
   for (const lv of [0.25, 0.5, 0.75, 1]) g += `<polygon class="radar-grid" points="${dims.map((_, i) => p(i, R * lv).map((v) => v.toFixed(1)).join(',')).join(' ')}"/>`;
-  dims.forEach((_, i) => { const [x, y] = p(i, R); g += `<line class="radar-grid" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line)"/>`; });
+  dims.forEach((_, i) => { const [x, y] = p(i, R); g += `<line class="radar-grid" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`; });
   const poly = (vals, cls) => `<polygon class="${cls}" points="${dims.map((dm, i) => p(i, R * A.clamp((vals[dm.id] || 0) / 100, 0, 1)).map((v) => v.toFixed(1)).join(',')).join(' ')}"/>`;
-  if (then) g += poly(then, 'radar-then');
-  g += poly(now, 'radar-now');
+  for (const [vals, cls] of layers || []) if (vals) g += poly(vals, cls);
+  if (now) g += poly(now, 'radar-now');
   dims.forEach((dm, i) => {
-    const [x, y] = p(i, R + 20);
+    const [x, y] = p(i, R + 18);
     const anchor = Math.abs(x - cx) < 10 ? 'middle' : x > cx ? 'start' : 'end';
-    const yy = y < cy - R ? y - 2 : y;
-    g += `<text class="radar-lbl" x="${x.toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="${anchor}">${esc(dm.name.replace('Executive ', ''))}</text>`;
-    g += `<text class="radar-val" x="${x.toFixed(1)}" y="${(yy + 12).toFixed(1)}" text-anchor="${anchor}">${now[dm.id] != null ? Math.round(now[dm.id]) : '—'}</text>`;
+    const yy = y < cy - R ? y - 4 : y > cy + R ? y + 6 : y;
+    g += `<text class="radar-lbl" x="${x.toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="${anchor}">${esc(dm.short || dm.name)}</text>`;
+    g += `<text class="radar-val" x="${x.toFixed(1)}" y="${(yy + 12).toFixed(1)}" text-anchor="${anchor}">${now && now[dm.id] != null ? s10(now[dm.id]) : '—'}</text>`;
   });
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Score profile by dimension">${g}</svg>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Dimension profile against baseline and target">${g}</svg>`;
 }
-
 function waveSvg(wave) {
   if (!wave || !wave.length) return '';
   const W = 320, H = 56, n = wave.length, bw = W / n;
   return `<svg class="wave" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${wave.map((v, i) => { const h = Math.max(1.5, v * (H - 4)); return `<rect x="${(i * bw).toFixed(2)}" y="${((H - h) / 2).toFixed(2)}" width="${Math.max(0.8, bw - 0.6).toFixed(2)}" height="${h.toFixed(2)}" rx="0.6"/>`; }).join('')}</svg>`;
 }
 
-function bars(scores, dims = C.DIMENSIONS) {
-  return `<div class="bars">${dims.filter((d) => scores[d.id] != null).map((d) => {
+function bars(scores, dims = C.DIMENSIONS, opts = {}) {
+  const pl = opts.plan ? G.plan() : null;
+  return `<div class="bars">${dims.filter((d) => scores[d.id] != null && !isNaN(scores[d.id])).map((d) => {
     const v = Math.round(scores[d.id]);
-    return `<div class="bar"><span>${esc(d.name)}</span><span class="track"><span class="fill ${scoreClass(v)}" style="width:${v}%"></span></span><span class="val">${v}</span></div>`;
-  }).join('')}</div>`;
+    const cls = pl ? (v >= pl.target[d.id] * 10 ? 'good' : v >= pl.baseline[d.id] * 10 ? 'warn' : 'bad') : scoreClass(v);
+    const ticks = pl ? `<i class="tk base" style="left:${pl.baseline[d.id] * 10}%"></i><i class="tk goal" style="left:${pl.target[d.id] * 10}%"></i>` : '';
+    return `<div class="bar"><span>${esc(opts.short ? (d.short || d.name) : d.name)}</span><span class="track"><span class="fill ${cls}" style="width:${v}%"></span>${ticks}</span><span class="val">${s10(v)}</span></div>`;
+  }).join('')}</div>${pl ? '<div class="legend" style="margin-top:6px"><span><i class="tk-l base"></i>Baseline</span><span><i class="tk-l goal"></i>Target</span></div>' : ''}`;
 }
 
-/* ---------------- Stats ---------------- */
-const REP_KINDS = ['scenario', 'impromptu', 'teachback', 'custom', 'question', 'spar', 'concision'];
-function sessionXp(s) {
-  if (s.kind === 'spar') return 25 + 3 * ((s.convo || []).filter((t) => t.role === 'me').length);
-  if (s.kind === 'drill') return 6;
-  if (s.kind === 'visual') return 10;
-  const sc = s.scores && s.scores.overall;
-  return 10 + (sc ? Math.round(sc / 10) : 0) + (s.coach ? 5 : 0) + (s.attempt > 1 ? 3 : 0);
-}
-function computeStats() {
-  const ss = Store.sessions, logs = Store.logs;
-  const days = new Set(ss.map((s) => s.date).concat(logs.map((l) => l.date)));
-  let streak = 0;
-  const d = new Date();
-  if (!days.has(dkey(d))) d.setDate(d.getDate() - 1);
-  while (days.has(dkey(d))) { streak++; d.setDate(d.getDate() - 1); }
-  let best = 0, run = 0, prev = null;
-  for (const k of [...days].sort()) {
-    const t = parseKey(k).getTime();
-    run = prev != null && Math.round((t - prev) / 86400000) === 1 ? run + 1 : 1;
-    best = Math.max(best, run); prev = t;
-  }
-  const reps = ss.filter((s) => REP_KINDS.includes(s.kind));
-  const scored = reps.filter((s) => s.scores && s.scores.overall != null).slice().reverse(); // oldest first
-  const now = new Date();
-  const monday = new Date(now); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
-  const secs = (s) => s.durationSec || (s.kind === 'drill' ? (s.minutes || 2) * 60 : 0);
-  const weekSec = ss.filter((s) => s.ts >= monday.getTime()).reduce((a, s) => a + secs(s), 0);
-  const totalSec = ss.reduce((a, s) => a + secs(s), 0);
-  const p = Store.profile || {};
-  const xp = ss.reduce((a, s) => a + sessionXp(s), 0) + logs.length * 15 + Store.preps.length * 10 + Store.reviews.length * 10 + (p.lessonsRead || []).length * 4;
-  let lvl = C.LEVELS[0], next = null;
-  for (let i = 0; i < C.LEVELS.length; i++) if (xp >= C.LEVELS[i].xp) { lvl = C.LEVELS[i]; next = C.LEVELS[i + 1] || null; }
-  const avgDims = (list) => {
-    const out = {};
-    for (const dm of C.DIMENSIONS) { const v = list.map((s) => s.scores && s.scores[dm.id]).filter((x) => x != null); out[dm.id] = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }
-    const o = list.map((s) => s.scores.overall).filter((x) => x != null); out.overall = o.length ? o.reduce((a, b) => a + b, 0) / o.length : null;
-    return out;
-  };
-  const last7 = scored.filter((s) => s.ts >= Date.now() - 7 * 86400000);
-  return {
-    days, streak, best, reps, scored, weekMin: Math.round(weekSec / 60), totalMin: Math.round(totalSec / 60), xp, level: lvl, next,
-    recent: scored.length ? avgDims(scored.slice(-10)) : null,
-    first: scored.length >= 12 ? avgDims(scored.slice(0, 10)) : null,
-    week: last7.length ? avgDims(last7) : null,
-    today: ss.filter((s) => s.date === dkey()),
-  };
-}
-function earnedBadges(st) {
-  const ss = Store.sessions, e = new Set();
-  const reps = st.reps;
-  if (reps.length) e.add('first');
-  if (st.best >= 3) e.add('streak3'); if (st.best >= 7) e.add('streak7'); if (st.best >= 30) e.add('streak30');
-  if (reps.filter((s) => s.metrics && s.metrics.bluf === true).length >= 5) e.add('bluf5');
-  if (reps.some((s) => s.metrics && s.source !== 'typed' && (s.durationSec || 0) >= 60 && s.metrics.fillers === 0 && s.source !== 'dictation')) e.add('clean60');
-  if (reps.some((s) => s.metrics && s.metrics.words >= 80 && s.metrics.hedges === 0)) e.add('nohedge');
-  const p = Store.profile.settings;
-  if (reps.filter((s) => s.metrics && s.metrics.wpm && s.metrics.wpm >= p.paceLo && s.metrics.wpm <= p.paceHi).length >= 5) e.add('pocket5');
-  const spars = ss.filter((s) => s.kind === 'spar');
-  if (spars.length >= 1) e.add('spar1'); if (spars.length >= 5) e.add('spar5');
-  if (reps.some((s) => s.attempt > 1 && s.prevScore != null && s.scores && s.scores.overall - s.prevScore >= 10)) e.add('runback');
-  if (reps.some((s) => s.scores && s.scores.overall >= 85)) e.add('score85');
-  if (reps.length >= 25) e.add('reps25'); if (reps.length >= 100) e.add('reps100');
-  if (Store.logs.length >= 5) e.add('field5');
-  if (ss.some((s) => s.kind === 'visual')) e.add('camera');
-  if (Store.preps.length >= 3) e.add('prep3');
-  return e;
-}
-
-/* ---------------- Daily plan ---------------- */
-const SKILL_WARMUP = { pauses: 'pause-ladder', fillers: 'pause-ladder', vocal_variety: 'inflection', enunciation: 'enunciation', pace: 'pace', concision: 'concision', hedging: 'swaps', ownership: 'swaps', precision: 'swaps', composure: 'breath', qa: 'breath', conviction: 'inflection' };
-function focusOrder() {
-  const p = Store.profile;
-  const focus = (p.focus && p.focus.length ? p.focus : C.STARTER_FOCUS).slice();
-  const st = computeStats();
-  return focus.map((id, i) => {
-    const r = p.ratings[id] || 3;
-    const dim = C.SKILL_DIM[id];
-    const recent = st.recent && st.recent[dim] != null ? st.recent[dim] : 70;
-    const evPri = p.evaluation && p.evaluation.areas ? (p.evaluation.areas.find((a) => a.skill === id) || {}).priority : null;
-    return { id, w: (6 - r) * 10 + (100 - recent) * 0.4 + (evPri ? (4 - evPri) * 6 : 0) - i };
-  }).sort((a, b) => b.w - a.w).map((x) => x.id);
-}
-function dailyPlan(date = new Date()) {
-  const seed = daySeed(date);
-  const order = focusOrder();
-  const target = order[seed % Math.max(1, Math.min(3, order.length))] || 'bluf';
-  const warmId = SKILL_WARMUP[order[(seed + 1) % order.length]] || pick(C.WARMUPS, seed).id;
-  const warm = C.WARMUPS.find((w) => w.id === warmId) || C.WARMUPS[0];
-  let matches = C.SCENARIOS.filter((s) => s.focus.includes(target));
-  if (!matches.length) matches = C.SCENARIOS;
-  const scen = pick(matches, Math.floor(seed / 3) + seed);
-  const dow = date.getDay();
-  let stretch;
-  if (dow === 2 || dow === 4) { const per = pick(C.PERSONAS.filter((x) => x.focus.some((f) => order.includes(f))).concat(C.PERSONAS), seed); stretch = { kind: 'spar', id: per.id, title: `Spar with ${per.name}`, desc: `${per.role}. Five live questions, then a debrief.`, icon: 'spar', meta: '8 min' }; }
-  else if (dow === 3) { const dx = C.dxEstimate(date); stretch = dx ? { kind: 'teachback', id: dx[0], title: `Teach-back: ${dx[2]}`, desc: 'Explain today\'s DX Daily lesson to a non-expert board member in 60 seconds.', icon: 'grad', meta: '3 min' } : null; }
-  else if (dow === 0) stretch = { kind: 'review', id: 'week', title: 'Weekly review', desc: 'See your patterns and set next week\'s focus.', icon: 'calendar', meta: '3 min' };
-  else if (dow === 6) stretch = { kind: 'log', id: 'log', title: 'Log a real meeting', desc: 'Rate how you showed up this week and capture one lesson.', icon: 'notebook', meta: '3 min' };
-  if (!stretch) { const q = pick(C.IMPROMPTU, seed); stretch = { kind: 'impromptu', id: String(C.IMPROMPTU.indexOf(q)), title: 'Impromptu: 60 seconds', desc: q, icon: 'bolt', meta: '2 min' }; }
-  const items = [
-    { kind: 'drill', id: warm.id, title: warm.name, desc: warm.why, icon: drillIcon(warm.id), meta: `${warm.minutes} min` },
-    { kind: 'scenario', id: scen.id, title: scen.title, desc: `Focus: ${(C.skill(target) || {}).name || ''}. ${scen.audience}`, icon: 'mic', meta: `${scen.time}s rep` },
-    stretch,
-  ];
-  const today = Store.sessions.filter((s) => s.date === dkey(date));
-  for (const it of items) {
-    if (it.kind === 'review') it.done = Store.reviews.some((r) => r.date === dkey(date));
-    else if (it.kind === 'log') it.done = Store.logs.some((l) => l.date === dkey(date));
-    else if (it.kind === 'spar') it.done = today.some((s) => s.kind === 'spar');
-    else it.done = today.some((s) => s.kind === it.kind && String(s.refId) === String(it.id));
-  }
-  return { items, target, lesson: pick(C.LESSONS.filter((l) => order.slice(0, 3).some((id) => (C.skill(id) || {}).pillar === l.pillar)).concat(C.LESSONS), seed) };
-}
-function drillIcon(id) { return { breath: 'breath', vocal: 'volume', enunciation: 'pen', 'pause-ladder': 'pace', inflection: 'pace', swaps: 'swap', pace: 'clock', concision: 'scissors', pregame: 'target' }[id] || 'target'; }

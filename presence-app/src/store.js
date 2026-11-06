@@ -16,16 +16,12 @@ const Store = (() => {
 
   function defaultProfile() {
     return {
-      name: 'Muddassir',
-      role: 'Healthcare corporate development & investing leader, CFA',
-      audiences: 'Investment committees, boards, health system executives, physician leaders, LPs, hiring panels',
-      goal: 'Show up as a senior investing executive: clear, concise and calm under pressure.',
-      focus: [...C.STARTER_FOCUS],
-      ratings: {},
-      evaluation: null,
-      onboarded: false,
-      lessonsRead: [],
-      settings: { paceLo: 130, paceHi: 160, autoCoach: true, voice: true, thinkTime: 10, customFillers: [], weeklyGoalMin: 60 },
+      name: '', role: '', audiences: '', goal: '',
+      plan: null, // personal plan (baselines, targets, strengths, tendencies); falls back to C.DEFAULT_PLAN
+      objective: 'A', nextAdjustment: '',
+      ratings: {}, onboarded: false, lessonsRead: [],
+      game: { seenBadges: null, level: null, stage: null },
+      settings: { paceLo: 130, paceHi: 160, autoCoach: true, voice: true, thinkTime: 10, customFillers: [], weeklyGoalMin: 60, sound: true },
       createdAt: Date.now(),
     };
   }
@@ -33,7 +29,8 @@ const Store = (() => {
     const d = defaultProfile();
     const out = Object.assign({}, d, p || {});
     out.settings = Object.assign({}, d.settings, (p && p.settings) || {});
-    if (!Array.isArray(out.focus)) out.focus = d.focus;
+    out.game = Object.assign({}, d.game, (p && p.game) || {});
+    if (!/^[A-E]$/.test(out.objective || '')) out.objective = 'A';
     if (!Array.isArray(out.lessonsRead)) out.lessonsRead = [];
     if (!out.ratings || typeof out.ratings !== 'object') out.ratings = {};
     return out;
@@ -150,6 +147,7 @@ const Store = (() => {
   function put(col, item) {
     if (!item.id) item.id = newId();
     if (!item.ts) item.ts = Date.now();
+    if (item.mult == null && (col === 'sessions' || col === 'logs') && typeof G !== 'undefined') { try { item.mult = G.multNow(); } catch (e) { item.mult = 1; } }
     const arr = st[col];
     const i = arr.findIndex((x) => x.id === item.id);
     if (i >= 0) arr[i] = item; else arr.push(item);
